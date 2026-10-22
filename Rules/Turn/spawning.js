@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRules = exports.firstSpawnTurn = void 0;
+exports.getRules = exports.turnCount = exports.firstSpawnTurn = void 0;
 const Effect_1 = require("@civ-clone/core-rule/Effect");
 const Spawning_1 = require("../Spawning");
 const level_1 = require("@civ-clone/civ1-difficulty/level");
@@ -8,8 +8,12 @@ const level_1 = require("@civ-clone/civ1-difficulty/level");
 //  each level up, to 30 on Emperor (`GameEngine.cs` `F0_1238_0980`).
 const firstSpawnTurn = (level) => (5 - level) * 30;
 exports.firstSpawnTurn = firstSpawnTurn;
+// v474.05 spawns barbarians once everyone has moved in its count C, and they first move in C + 1. The `Start` rules
+//  run as our turn V begins, which plays count V − 1, so the count just completed, the one v474.05 tests, is V − 2.
+const turnCount = (turn) => turn.value() - 2;
+exports.turnCount = turnCount;
 const getRules = (gameDifficultyRegistry) => [
-    new Spawning_1.default('civ1-barbarians:spawning/from-turn', new Effect_1.default((turn) => turn.value() - 1 >= (0, exports.firstSpawnTurn)((0, level_1.levelOf)(gameDifficultyRegistry)))),
+    new Spawning_1.default('civ1-barbarians:spawning/from-turn', new Effect_1.default((turn) => (0, exports.turnCount)(turn) >= (0, exports.firstSpawnTurn)((0, level_1.levelOf)(gameDifficultyRegistry)))),
 ];
 exports.getRules = getRules;
 exports.default = exports.getRules;

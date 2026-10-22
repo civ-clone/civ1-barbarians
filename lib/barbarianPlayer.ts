@@ -8,7 +8,7 @@ import World from '@civ-clone/core-world/World';
 import isBarbarian from '@civ-clone/base-civilization-barbarian/isBarbarian';
 
 export type BarbarianPlayerGame = AddPlayerGame &
-  Pick<Game, 'playerGovernments'>;
+  Pick<Game, 'currentPlayers' | 'playerGovernments'>;
 
 // The rule that gives a new player its random starting advances. Barbarians never have an advance, and `Player`'s
 //  `Added` rules run before its civilization is set, so the rule is held off while the barbarian player is added, as
@@ -25,6 +25,10 @@ export const STARTING_ADVANCES_RULE =
  * host to give it its client. Its government is set to Anarchy, which it never leaves: no taxes, no science and no
  * upkeep, and production as usual. A revolution is never offered in Anarchy, and only a Democracy's civil disorder
  * starts one.
+ *
+ * The spawn runs as a turn starts. When that turn's players are already queued (`civ1-player` queues them before the
+ * `Start` rules run), the new player joins the end of the queue, so its first raiders move this turn, as v474.05's
+ * do the turn after they appear; queued later, the queue already holds it.
  */
 export const barbarianPlayer = (
   game: BarbarianPlayerGame,
@@ -73,6 +77,10 @@ export const barbarianPlayer = (
   }
 
   game.playerGovernments.getByPlayer(player).set(new Anarchy());
+
+  if (game.currentPlayers.length > 0 && !game.currentPlayers.includes(player)) {
+    game.currentPlayers.register(player);
+  }
 
   return player;
 };

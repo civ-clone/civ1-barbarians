@@ -21,8 +21,8 @@ export declare const uprisingUnits: (
 ) => (typeof Unit)[];
 /**
  * When barbarians appear, once every player has moved in v474.05 (`GameEngine.cs` `F0_1238_0980`), at the start of
- * the turn here, with the barbarians first to move. Each rule's gate is every `Spawning` rule (`Rules/Turn/spawning`:
- * turn (5 − level) × 30). The barbarian player is made by the first spawn.
+ * the next turn here (`turnCount`), with the barbarians first to move. Each rule's gate is every `Spawning` rule
+ * (`Rules/Turn/spawning`: turn (5 − level) × 30). The barbarian player is made by the first spawn.
  */
 export declare const getRules: (game: BarbariansGame) => Start[];
 export default getRules;

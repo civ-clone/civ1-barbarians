@@ -29,6 +29,7 @@ import anyoneHas from '../../lib/anyoneHas';
 import cityGold from '../../lib/cityGold';
 import isBarbarian from '@civ-clone/base-civilization-barbarian/isBarbarian';
 import { polarRows } from '../../lib/polar';
+import { turnCount } from './spawning';
 import spawning from '../../lib/spawning';
 import waterBodyHasAtLeast from '../../lib/waterBody';
 import worldOf from '../../lib/worldOf';
@@ -83,8 +84,8 @@ const nearestCity = (tile: Tile, cities: City[]): City =>
 
 /**
  * When barbarians appear, once every player has moved in v474.05 (`GameEngine.cs` `F0_1238_0980`), at the start of
- * the turn here, with the barbarians first to move. Each rule's gate is every `Spawning` rule (`Rules/Turn/spawning`:
- * turn (5 − level) × 30). The barbarian player is made by the first spawn.
+ * the next turn here (`turnCount`), with the barbarians first to move. Each rule's gate is every `Spawning` rule
+ * (`Rules/Turn/spawning`: turn (5 − level) × 30). The barbarian player is made by the first spawn.
  */
 export const getRules = (game: BarbariansGame): Start[] => [
   // Every 8th turn, until anyone has Automobile, a Sail (a Frigate from turn 300) appears on an empty square of a sea
@@ -93,8 +94,8 @@ export const getRules = (game: BarbariansGame): Start[] => [
   new Start(
     'civ1-barbarians:turn/start/sea-landing',
     new Criterion((turn: Turn): boolean => spawning(game.rules, turn)),
-    // `(turnCount + 1) % 8 === 0`, with `turnCount` being `turn.value() - 1`.
-    new Criterion((turn: Turn): boolean => turn.value() % 8 === 0),
+    // v474.05's `(turnCount + 1) % 8 === 0`.
+    new Criterion((turn: Turn): boolean => (turnCount(turn) + 1) % 8 === 0),
     new Criterion((): boolean => !anyoneHas(game.playerResearch, Automobile)),
     new Effect((turn: Turn): void => {
       const world = worldOf(game);
@@ -133,7 +134,7 @@ export const getRules = (game: BarbariansGame): Start[] => [
         return;
       }
 
-      const raiders = raidersAtSea(turn.value() - 1),
+      const raiders = raidersAtSea(turnCount(turn)),
         player = barbarianPlayer(game, world),
         ship = createUnit(
           (raiders < 3 ? Sail : Frigate) as unknown as typeof Unit,

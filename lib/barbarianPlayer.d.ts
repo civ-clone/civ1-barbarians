@@ -3,7 +3,7 @@ import { Game } from '@civ-clone/core-game';
 import Player from '@civ-clone/core-player/Player';
 import World from '@civ-clone/core-world/World';
 export type BarbarianPlayerGame = AddPlayerGame &
-  Pick<Game, 'playerGovernments'>;
+  Pick<Game, 'currentPlayers' | 'playerGovernments'>;
 export declare const STARTING_ADVANCES_RULE =
   'civ1-science:player/added/starting-advances';
 /**
@@ -15,6 +15,10 @@ export declare const STARTING_ADVANCES_RULE =
  * host to give it its client. Its government is set to Anarchy, which it never leaves: no taxes, no science and no
  * upkeep, and production as usual. A revolution is never offered in Anarchy, and only a Democracy's civil disorder
  * starts one.
+ *
+ * The spawn runs as a turn starts. When that turn's players are already queued (`civ1-player` queues them before the
+ * `Start` rules run), the new player joins the end of the queue, so its first raiders move this turn, as v474.05's
+ * do the turn after they appear; queued later, the queue already holds it.
  */
 export declare const barbarianPlayer: (
   game: BarbarianPlayerGame,
