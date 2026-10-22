@@ -27,7 +27,8 @@ export const createUnit = (
 
 /**
  * A group of barbarians on `tile`, one of each of `types` in order. Aboard `transport` when given, as the raiders a
- * ship brings are: stowed and inactive until it lands them, like units that embarked.
+ * ship brings are: stowed and inactive until it lands them, like units that embarked. One the ship can't take (a
+ * variant's capacity or `CanStow` rules) is removed again rather than left asleep at sea.
  */
 export const spawnUnits = (
   player: Player,
@@ -36,16 +37,21 @@ export const spawnUnits = (
   ruleRegistry: RuleRegistry,
   transport: NavalTransport | null = null
 ): Unit[] =>
-  types.map((UnitType: typeof Unit): Unit => {
+  types.flatMap((UnitType: typeof Unit): Unit[] => {
     const unit = createUnit(UnitType, player, tile, ruleRegistry);
 
     if (transport !== null) {
-      transport.stow(unit, tile);
+      if (!transport.stow(unit, tile)) {
+        unit.destroy();
+
+        return [];
+      }
+
       unit.setBusy(new Stowed());
       unit.setActive(false);
     }
 
-    return unit;
+    return [unit];
   });
 
 export default spawnUnits;

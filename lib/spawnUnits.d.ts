@@ -11,7 +11,8 @@ export declare const createUnit: (
 ) => Unit;
 /**
  * A group of barbarians on `tile`, one of each of `types` in order. Aboard `transport` when given, as the raiders a
- * ship brings are: stowed and inactive until it lands them, like units that embarked.
+ * ship brings are: stowed and inactive until it lands them, like units that embarked. One the ship can't take (a
+ * variant's capacity or `CanStow` rules) is removed again rather than left asleep at sea.
  */
 export declare const spawnUnits: (
   player: Player,

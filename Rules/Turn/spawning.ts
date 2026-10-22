@@ -8,6 +8,10 @@ import { levelOf } from '@civ-clone/civ1-difficulty/level';
 //  each level up, to 30 on Emperor (`GameEngine.cs` `F0_1238_0980`).
 export const firstSpawnTurn = (level: number): number => (5 - level) * 30;
 
+// v474.05 spawns barbarians once everyone has moved in its count C, and they first move in C + 1. The `Start` rules
+//  run as our turn V begins, which plays count V − 1, so the count just completed, the one v474.05 tests, is V − 2.
+export const turnCount = (turn: Turn): number => turn.value() - 2;
+
 export const getRules = (
   gameDifficultyRegistry: GameDifficultyRegistry
 ): Spawning[] => [
@@ -15,7 +19,7 @@ export const getRules = (
     'civ1-barbarians:spawning/from-turn',
     new Effect(
       (turn: Turn): boolean =>
-        turn.value() - 1 >= firstSpawnTurn(levelOf(gameDifficultyRegistry))
+        turnCount(turn) >= firstSpawnTurn(levelOf(gameDifficultyRegistry))
     )
   ),
 ];

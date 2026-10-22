@@ -1,4 +1,5 @@
 import {
+  Battleship,
   Cannon,
   Chariot,
   Diplomat,
@@ -28,6 +29,8 @@ import Chivalry from '@civ-clone/base-science-advance-chivalry/Chivalry';
 import { BarbariansGame } from '../Rules/Turn/start';
 import City from '@civ-clone/core-city/City';
 import CityRegistry from '@civ-clone/core-city/CityRegistry';
+import CurrentPlayerRegistry from '@civ-clone/core-player/CurrentPlayerRegistry';
+import Build from '@civ-clone/core-city-build/Rules/Build';
 import CivilizationRegistry from '@civ-clone/core-civilization/CivilizationRegistry';
 import Created from '@civ-clone/core-unit/Rules/Created';
 import Effect from '@civ-clone/core-rule/Effect';
@@ -54,7 +57,7 @@ import Unit from '@civ-clone/core-unit/Unit';
 import UnitRegistry from '@civ-clone/core-unit/UnitRegistry';
 import WorkedTileRegistry from '@civ-clone/core-city/WorkedTileRegistry';
 import World from '@civ-clone/core-world/World';
-import { availableToBarbarians } from '../Rules/City/build';
+import cityBuild, { availableToBarbarians } from '../Rules/City/build';
 import cityGold from '../lib/cityGold';
 import { expect } from 'chai';
 import { firstSpawnTurn } from '../Rules/Turn/spawning';
@@ -108,6 +111,7 @@ const createGame = async (): Promise<TestGame> => {
       },
       cityNames: cityNameRegistryInstance,
       civilizations: new CivilizationRegistry(),
+      currentPlayers: new CurrentPlayerRegistry(),
       difficulty: new GameDifficultyRegistry(),
       engine,
       landMasses,
@@ -152,6 +156,9 @@ const createGame = async (): Promise<TestGame> => {
   );
 
   registerRules(game as any);
+
+  // A ship's capacity, and so whether it takes its raiders aboard, comes from civ1-unit's yield rules.
+  rules.register(...unitYields(undefined, rules));
 
   [
     'player:spawned',
@@ -212,16 +219,14 @@ describe('the gate', (): void => {
 
   it('lets nothing land before turn 150 on Chieftain, nor before 30 on Emperor', async (): Promise<void> => {
     for (const [Level, before, after] of [
-      [Chieftain, 144, 152],
-      [Emperor, 24, 32],
+      [Chieftain, 151, 153],
+      [Emperor, 31, 33],
     ] as [typeof Chieftain, number, number][]) {
       const game = await createGame();
 
       game.difficulty.set(Level);
       addCivilization(game, [5, 5]);
 
-      // Slot 127 of 128 is never a city here, so no uprising muddies the count.
-      game.rolls.push(0.999);
       startTurn(game, before);
 
       expect(barbariansOf(game), `${Level.name} turn ${before}`).to.be
@@ -244,7 +249,7 @@ describe('the gate', (): void => {
     game.rules.getById('civ1-barbarians:spawning/from-turn')!.disable();
 
     game.rolls.push(0, 0.999);
-    startTurn(game, 8);
+    startTurn(game, 9);
 
     expect(events(game, 'barbarians:raiders-at-sea')).to.have.length(1);
   });
@@ -257,7 +262,7 @@ describe('sea landings', (): void => {
     game.difficulty.set(Emperor);
     addCivilization(game, [5, 5]);
 
-    for (const turn of [33, 34, 35, 36, 37, 38, 39]) {
+    for (const turn of [34, 35, 36, 37, 38, 39, 40]) {
       game.rolls.push(0.999);
       startTurn(game, turn);
     }
@@ -265,7 +270,7 @@ describe('sea landings', (): void => {
     expect(events(game, 'barbarians:raiders-at-sea')).to.have.length(0);
 
     game.rolls.push(0, 0.999);
-    startTurn(game, 40);
+    startTurn(game, 41);
 
     expect(events(game, 'barbarians:raiders-at-sea')).to.have.length(1);
   });
@@ -278,20 +283,20 @@ describe('sea landings', (): void => {
     game.playerResearch.getByPlayer(player).addAdvance(Automobile);
 
     game.rolls.push(0, 0.999);
-    startTurn(game, 40);
+    startTurn(game, 41);
 
     expect(events(game, 'barbarians:raiders-at-sea')).to.have.length(0);
     expect(barbariansOf(game)).to.be.undefined;
   });
 
-  it('bring a Sail with Swordmen and a Diplomat, clear of the poles, on a real sea', async (): Promise<void> => {
+  it('bring a Sail with Swordmen and a Diplomat aboard, clear of the poles, on a real sea', async (): Promise<void> => {
     const game = await createGame();
 
     game.difficulty.set(Emperor);
     addCivilization(game, [5, 5]);
 
     game.rolls.push(0, 0.999);
-    startTurn(game, 40);
+    startTurn(game, 41);
 
     const [[, player, ship, tile]] = events(
         game,
@@ -305,13 +310,14 @@ describe('sea landings', (): void => {
     expect(tile.isWater()).to.be.true;
     expect(tile.y()).to.be.at.least(polarRows(30, 3));
     expect(waterBodyHasAtLeast(tile, 16)).to.be.true;
-    // Turn 40 is count 39: 1 raider.
+    // Turn 41 is count 39: 1 raider.
     expect(cargo.map((unit: Unit) => unit.constructor)).to.eql([
       Swordman,
       Diplomat,
     ]);
     expect(cargo.every((unit: Unit) => !unit.active())).to.be.true;
     expect(cargo.every((unit: Unit) => unit.tile() === tile)).to.be.true;
+    expect((ship as any).cargo()).to.have.members(cargo);
   });
 
   it('bring a Frigate of Knights from turn 300 once anyone has Explosives', async (): Promise<void> => {
@@ -322,7 +328,7 @@ describe('sea landings', (): void => {
     game.playerResearch.getByPlayer(civilization).addAdvance(Explosives);
 
     game.rolls.push(0, 0.999);
-    startTurn(game, 304);
+    startTurn(game, 305);
 
     const [[, player, ship]] = events(game, 'barbarians:raiders-at-sea') as [
       string,
@@ -358,7 +364,7 @@ describe('land uprisings', (): void => {
 
     // Slot 0 (the city), a chance roll of 0 against gold 80, then one try: x + 6, y + 0, and a group roll of 0.9.
     game.rolls.push(0, 0, 12.5 / 13, 6.5 / 13, 0.9);
-    startTurn(game, 33);
+    startTurn(game, 34);
 
     const [[, player, target, tile, guerrilla]] = events(
         game,
@@ -391,13 +397,13 @@ describe('land uprisings', (): void => {
 
     // Slot 1 of 128: no city there.
     game.rolls.push(1.5 / 128, 0.999);
-    startTurn(game, 33);
+    startTurn(game, 34);
 
     expect(events(game, 'barbarians:uprising')).to.have.length(0);
 
     // Slot 0, but a roll of 80 against gold 80.
     game.rolls.push(0, 0.8, 0.999);
-    startTurn(game, 34);
+    startTurn(game, 35);
 
     expect(events(game, 'barbarians:uprising')).to.have.length(0);
     expect(barbariansOf(game)).to.be.undefined;
@@ -443,7 +449,7 @@ describe('land uprisings', (): void => {
     game.difficulty.set(Emperor);
     game.playerResearch.getByPlayer(civilization).addAdvance(Industrialization);
     game.rolls.push(0, 0, 12.5 / 13, 6.5 / 13, 0.9);
-    startTurn(game, 33);
+    startTurn(game, 34);
 
     const [[, player, , , guerrilla]] = events(game, 'barbarians:uprising') as [
       string,
@@ -468,9 +474,9 @@ describe('the barbarian player', (): void => {
     addCivilization(game, [5, 5]);
 
     game.rolls.push(0, 0.999);
-    startTurn(game, 40);
+    startTurn(game, 41);
     game.rolls.push(0, 0.999);
-    startTurn(game, 48);
+    startTurn(game, 49);
 
     const barbarians = game.players
       .entries()
@@ -491,6 +497,34 @@ describe('the barbarian player', (): void => {
     expect(game.leaders.length).to.equal(0);
     expect(game.playerWorlds.getByPlayer(player)).not.to.be.undefined;
     expect(events(game, 'barbarians:raiders-at-sea')).to.have.length(2);
+  });
+
+  it('joins the turn under way, last, so its first raiders move at once', async (): Promise<void> => {
+    const game = await createGame(),
+      { player: civilization } = addCivilization(game, [5, 5]);
+
+    game.difficulty.set(Emperor);
+    game.currentPlayers.register(civilization);
+
+    game.rolls.push(0, 0.999);
+    startTurn(game, 41);
+
+    expect(game.currentPlayers.entries()).to.eql([
+      civilization,
+      barbariansOf(game),
+    ]);
+  });
+
+  it('is left for the turn to queue when none is under way', async (): Promise<void> => {
+    const game = await createGame();
+
+    addCivilization(game, [5, 5]);
+    game.difficulty.set(Emperor);
+
+    game.rolls.push(0, 0.999);
+    startTurn(game, 41);
+
+    expect(game.currentPlayers.length).to.equal(0);
   });
 });
 
@@ -571,5 +605,33 @@ describe('what a barbarian city builds', (): void => {
     research.set(b, [Chivalry]);
 
     expect(available(Knight), 'Knight: two civilizations').to.be.true;
+    expect(available(Battleship), 'a ship').to.be.false;
+  });
+
+  it('is the rule a barbarian city gets, and no other city', (): void => {
+    const registry = new RuleRegistry(),
+      barbarians = { civilization: () => new Barbarian() },
+      civilization = { civilization: () => ({}) },
+      cityOf = (player: unknown) => ({ player: () => player });
+
+    registry.register(
+      ...cityBuild(players as any, playerResearch as any, rules)
+    );
+
+    const [forBarbarians] = registry.process(
+      Build,
+      cityOf(barbarians) as any,
+      Warrior as any
+    );
+
+    expect(forBarbarians.validate()).to.be.true;
+    expect(
+      registry
+        .process(Build, cityOf(barbarians) as any, Battleship as any)[0]
+        .validate()
+    ).to.be.false;
+    expect(
+      registry.process(Build, cityOf(civilization) as any, Warrior as any)
+    ).to.have.length(0);
   });
 });

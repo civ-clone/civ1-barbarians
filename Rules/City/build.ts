@@ -1,5 +1,6 @@
 import { Build, IBuildCriterion } from '@civ-clone/core-city-build/Rules/Build';
 import { Caravan, Diplomat, Settlers } from '@civ-clone/civ1-unit/Units';
+import { Land } from '@civ-clone/civ1-unit/Types';
 import { PlayerRegistry } from '@civ-clone/core-player/PlayerRegistry';
 import { PlayerResearchRegistry } from '@civ-clone/core-science/PlayerResearchRegistry';
 import { RuleRegistry } from '@civ-clone/core-rule/RuleRegistry';
@@ -30,9 +31,10 @@ const baseAttack = (
 };
 
 /**
- * Whether a barbarian city may build `Item`: a unit that attacks, other than Settlers, a Diplomat or a Caravan, that
- * at least two civilizations know how to build (civ-clone/web-renderer#27, decision 3). Never an improvement or a
- * Wonder. v474.05's barbarian cities build Legions, then Knights.
+ * Whether a barbarian city may build `Item`: a land unit that attacks, other than Settlers, a Diplomat or a Caravan,
+ * that at least two civilizations know how to build (civ-clone/web-renderer#27, decision 3). Never a ship, an
+ * aircraft or a missile (the barbarians' client moves land units and transports only), an improvement or a Wonder.
+ * v474.05's barbarian cities build Legions, then Knights.
  */
 export const availableToBarbarians = (
   Item: IConstructor,
@@ -40,7 +42,7 @@ export const availableToBarbarians = (
   playerResearchRegistry: Pick<PlayerResearchRegistry, 'getByPlayer'>,
   ruleRegistry: RuleRegistry
 ): boolean => {
-  if (!Object.prototype.isPrototypeOf.call(Unit, Item)) {
+  if (!Object.prototype.isPrototypeOf.call(Land, Item)) {
     return false;
   }
 
