@@ -13,7 +13,17 @@ import {
   Warrior,
 } from '@civ-clone/civ1-unit/Units';
 import { Chieftain, Emperor } from '@civ-clone/civ1-difficulty/Difficulties';
-import { Grassland, Ocean } from '@civ-clone/civ1-world/Terrains';
+import { Grassland, Mountains, Ocean } from '@civ-clone/civ1-world/Terrains';
+import { Irrigation, Mine } from '@civ-clone/civ1-world/TileImprovements';
+import { hordeSquares, hordeUnit } from '../Rules/GoodyHut/barbarians';
+import BarbariansRule from '@civ-clone/civ1-goody-hut/Rules/GoodyHut/Barbarians';
+import Destroyed from '@civ-clone/core-unit/Rules/Destroyed';
+import Moved from '@civ-clone/core-unit/Rules/Moved';
+import TileImprovementRegistry from '@civ-clone/core-tile-improvement/TileImprovementRegistry';
+import barbarianPlayer from '../lib/barbarianPlayer';
+import { RANSOM } from '../Rules/Unit/destroyed';
+import { unleashesBarbarians } from '@civ-clone/civ1-goody-hut/Rules/GoodyHut/action';
+import tileImprovementPillaged from '@civ-clone/civ1-world/Rules/TileImprovement/pillaged';
 import { raidersAtSea, uprisingSize, uprisingUnits } from '../Rules/Turn/start';
 import { instance as advanceRegistryInstance } from '@civ-clone/core-science/AdvanceRegistry';
 import { instance as attributeRegistryInstance } from '@civ-clone/core-civilization/AttributeRegistry';
@@ -120,6 +130,9 @@ const createGame = async (): Promise<TestGame> => {
       playerResearch: new PlayerResearchRegistry(),
       playerTreasuries: {
         getByPlayerAndType: (player: Player) => ({
+          add: (value: number): void => {
+            gold.set(player, (gold.get(player) ?? 0) + value);
+          },
           value: () => gold.get(player) ?? 0,
         }),
       },
@@ -127,6 +140,7 @@ const createGame = async (): Promise<TestGame> => {
       players: new PlayerRegistry(),
       rng: (): number => (rolls.length > 0 ? rolls.shift()! : 0.5),
       rules,
+      tileImprovements: new TileImprovementRegistry(),
       traits: traitRegistryInstance,
       turn: new Turn(),
       units: new UnitRegistry(),
@@ -160,9 +174,12 @@ const createGame = async (): Promise<TestGame> => {
   // A ship's capacity, and so whether it takes its raiders aboard, comes from civ1-unit's yield rules.
   rules.register(...unitYields(undefined, rules));
 
+  rules.register(...tileImprovementPillaged(game.tileImprovements, engine));
+
   [
     'player:spawned',
     'barbarians:raiders-at-sea',
+    'barbarians:ransom',
     'barbarians:uprising',
   ].forEach((event: string): void => {
     engine.on(event, (...args: unknown[]): void => {
@@ -633,5 +650,206 @@ describe('what a barbarian city builds', (): void => {
     expect(
       registry.process(Build, cityOf(civilization) as any, Warrior as any)
     ).to.have.length(0);
+  });
+});
+
+// A barbarian unit of `UnitType` on `at`, as one spawned or built would be.
+const barbarianUnit = (
+  game: TestGame,
+  UnitType: typeof Unit,
+  at: [number, number]
+): Unit => {
+  const player = barbarianPlayer(game as any, game.world),
+    unit = new (UnitType as any)(
+      null,
+      player,
+      game.world.get(...at),
+      game.rules
+    );
+
+  game.units.register(unit);
+
+  return unit;
+};
+
+const hutAt = (game: TestGame, at: [number, number]) =>
+  ({ tile: () => game.world.get(...at) } as any);
+
+describe('a goody hut', (): void => {
+  it('unleashes barbarians when no city is within 4 and the player has one', async (): Promise<void> => {
+    const game = await createGame(),
+      { player } = addCivilization(game, [5, 5]),
+      { player: cityless } = addCivilization(game),
+      unitOf = (owner: Player) => ({ player: () => owner } as any);
+
+    expect(
+      unleashesBarbarians(hutAt(game, [12, 5]), unitOf(player), game.cities),
+      'far from any city'
+    ).to.be.true;
+    expect(
+      unleashesBarbarians(hutAt(game, [8, 5]), unitOf(player), game.cities),
+      'within 4 of a city'
+    ).to.be.false;
+    expect(
+      unleashesBarbarians(hutAt(game, [12, 5]), unitOf(cityless), game.cities),
+      'with no city of its own'
+    ).to.be.false;
+  });
+
+  it('puts 3, 4 or 8 units round the hut for 1, 2 or 3 cities, clockwise from the north', async (): Promise<void> => {
+    const game = await createGame(),
+      hut = game.world.get(10, 5),
+      at = (tiles: Tile[]) => tiles.map((tile) => [tile.x(), tile.y()]);
+
+    expect(at(hordeSquares(hut, 1, () => true))).to.eql([
+      [10, 4],
+      [11, 6],
+      [9, 5],
+    ]);
+    expect(hordeSquares(hut, 2, () => true)).to.have.length(4);
+    expect(hordeSquares(hut, 3, () => true)).to.have.length(8);
+    expect(hordeSquares(hut, 7, () => true)).to.have.length(8);
+  });
+
+  it('sends a Horseman, or a Swordman on Mountains', (): void => {
+    expect(hordeUnit({ terrain: () => new Grassland() } as any)).to.equal(
+      Horseman
+    );
+    expect(hordeUnit({ terrain: () => new Mountains() } as any)).to.equal(
+      Swordman
+    );
+  });
+
+  it('raises a barbarian horde on the free land round it, passing over squares that are taken', async (): Promise<void> => {
+    const game = await createGame(),
+      { player } = addCivilization(game, [5, 5]),
+      blocker = new Warrior(null, player, game.world.get(10, 4), game.rules);
+
+    game.units.register(blocker);
+
+    game.rules.process(BarbariansRule, hutAt(game, [10, 5]), {
+      player: () => player,
+    } as any);
+
+    const barbarians = barbariansOf(game)!,
+      horde = game.units.getByPlayer(barbarians);
+
+    expect(horde.map((unit: Unit) => unit.constructor)).to.eql([
+      Horseman,
+      Horseman,
+    ]);
+    expect(
+      horde.map((unit: Unit) => [unit.tile().x(), unit.tile().y()])
+    ).to.eql([
+      [11, 6],
+      [9, 5],
+    ]);
+  });
+});
+
+describe('ransom', (): void => {
+  it('pays 100 gold for a barbarian leader killed by a civilization', async (): Promise<void> => {
+    const game = await createGame(),
+      { player } = addCivilization(game, [5, 5], { treasury: 0 }),
+      leader = barbarianUnit(game, Diplomat, [12, 5]);
+
+    game.rules.process(Destroyed, leader, player);
+
+    expect(RANSOM).to.equal(100);
+    expect(game.gold.get(player)).to.equal(100);
+    expect(events(game, 'barbarians:ransom')).to.eql([
+      ['barbarians:ransom', player, leader, 100],
+    ]);
+  });
+
+  it('pays nothing for a leader who disbands, nor for any other barbarian', async (): Promise<void> => {
+    const game = await createGame(),
+      { player } = addCivilization(game, [5, 5], { treasury: 0 });
+
+    game.rules.process(Destroyed, barbarianUnit(game, Diplomat, [12, 5]), null);
+    game.rules.process(
+      Destroyed,
+      barbarianUnit(game, Horseman, [12, 6]),
+      player
+    );
+
+    expect(game.gold.get(player)).to.equal(0);
+    expect(events(game, 'barbarians:ransom')).to.have.length(0);
+  });
+});
+
+describe('a city barbarians take', (): void => {
+  it('burns when the strongest barbarian there attacks at 2 or less, and is captured otherwise', async (): Promise<void> => {
+    for (const [UnitType, burns] of [
+      [Horseman, true],
+      [Musketman, true],
+      [Swordman, false],
+      [Knight, false],
+    ] as [typeof Unit, boolean][]) {
+      const game = await createGame(),
+        { city } = addCivilization(game, [5, 5]),
+        raider = barbarianUnit(game, UnitType, [5, 5]);
+
+      city!.capture(raider.player());
+
+      expect(city!.destroyed(), UnitType.name).to.equal(burns);
+      expect(isBarbarian(city!.player()), UnitType.name).to.be.true;
+    }
+  });
+});
+
+describe('pillage', (): void => {
+  const leaving = (from: Tile) => ({ from: () => from } as any);
+
+  it('wrecks irrigation and mines a mounted or gunpowder raider leaves near a civilization, and stops it', async (): Promise<void> => {
+    for (const UnitType of [Horseman, Chariot, Musketman, Cannon]) {
+      const game = await createGame(),
+        from = game.world.get(8, 5),
+        irrigation = new Irrigation(from, game.rules),
+        mine = new Mine(from, game.rules);
+
+      addCivilization(game, [5, 5]);
+      game.tileImprovements.register(irrigation, mine);
+
+      const raider = barbarianUnit(game, UnitType, [9, 5]);
+
+      game.rules.process(Moved, raider, leaving(from));
+
+      expect(game.tileImprovements.getByTile(from), UnitType.name).to.eql([]);
+      expect(raider.moves().value(), UnitType.name).to.equal(0);
+    }
+  });
+
+  it('is left to the others, and never happens in a city, near a barbarian city or without moving', async (): Promise<void> => {
+    const game = await createGame(),
+      from = game.world.get(8, 5),
+      { city } = addCivilization(game, [5, 5]),
+      check = (unit: Unit, tile: Tile, label: string): void => {
+        const improvement = new Irrigation(tile, game.rules);
+
+        game.tileImprovements.register(improvement);
+        game.rules.process(Moved, unit, leaving(tile));
+
+        expect(game.tileImprovements.getByTile(tile), label).to.include(
+          improvement
+        );
+      };
+
+    check(barbarianUnit(game, Swordman, [9, 5]), from, 'a Swordman');
+    check(barbarianUnit(game, Knight, [9, 5]), from, 'a Knight');
+    check(barbarianUnit(game, Horseman, [8, 5]), from, 'an attack, unmoved');
+    check(
+      barbarianUnit(game, Horseman, [6, 5]),
+      city!.tile(),
+      'leaving a city'
+    );
+
+    city!.capture(barbariansOf(game)!);
+
+    check(
+      barbarianUnit(game, Horseman, [9, 5]),
+      game.world.get(7, 5),
+      "near the barbarians' own city"
+    );
   });
 });
