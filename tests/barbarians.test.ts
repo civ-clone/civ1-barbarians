@@ -17,6 +17,8 @@ import { Grassland, Mountains, Ocean } from '@civ-clone/civ1-world/Terrains';
 import { Irrigation, Mine } from '@civ-clone/civ1-world/TileImprovements';
 import { hordeSquares, hordeUnit } from '../Rules/GoodyHut/barbarians';
 import BarbariansRule from '@civ-clone/civ1-goody-hut/Rules/GoodyHut/Barbarians';
+import Captured from '@civ-clone/core-city/Rules/Captured';
+import CityDestroyed from '@civ-clone/core-city/Rules/Destroyed';
 import Destroyed from '@civ-clone/core-unit/Rules/Destroyed';
 import Moved from '@civ-clone/core-unit/Rules/Moved';
 import TileImprovementRegistry from '@civ-clone/core-tile-improvement/TileImprovementRegistry';
@@ -762,6 +764,19 @@ describe('ransom', (): void => {
     ]);
   });
 
+  it('pays once for a leader destroyed twice, as cargo and again in the stack', async (): Promise<void> => {
+    const game = await createGame(),
+      { player } = addCivilization(game, [5, 5], { treasury: 0 }),
+      leader = barbarianUnit(game, Diplomat, [12, 5]);
+
+    game.rules.process(Destroyed, leader, player);
+    leader.setDestroyed();
+    game.rules.process(Destroyed, leader, player);
+
+    expect(game.gold.get(player)).to.equal(100);
+    expect(events(game, 'barbarians:ransom')).to.have.length(1);
+  });
+
   it('pays nothing for a leader who disbands, nor for any other barbarian', async (): Promise<void> => {
     const game = await createGame(),
       { player } = addCivilization(game, [5, 5], { treasury: 0 });
@@ -796,6 +811,42 @@ describe('a city barbarians take', (): void => {
       expect(isBarbarian(city!.player()), UnitType.name).to.be.true;
     }
   });
+
+  it('is destroyed once when the usual capture already destroyed it, as a size-1 city is', async (): Promise<void> => {
+    const game = await createGame(),
+      { city } = addCivilization(game, [5, 5], { size: 1 }),
+      raider = barbarianUnit(game, Horseman, [5, 5]);
+    let destroyed = 0;
+
+    // As `civ1-city`'s shrink does, at the usual priority, ahead of the burning.
+    game.rules.register(
+      new Captured(
+        new Effect((captured: City): void => {
+          captured.destroy(null);
+        })
+      ),
+      new CityDestroyed(
+        new Effect((): void => {
+          destroyed++;
+        })
+      )
+    );
+
+    city!.capture(raider.player());
+
+    expect(city!.destroyed()).to.be.true;
+    expect(destroyed).to.equal(1);
+  });
+
+  it('is not burned with no barbarian on its square', async (): Promise<void> => {
+    const game = await createGame(),
+      { city } = addCivilization(game, [5, 5]);
+
+    barbarianUnit(game, Horseman, [9, 5]);
+    city!.capture(barbariansOf(game)!);
+
+    expect(city!.destroyed()).to.be.false;
+  });
 });
 
 describe('pillage', (): void => {
@@ -817,6 +868,7 @@ describe('pillage', (): void => {
 
       expect(game.tileImprovements.getByTile(from), UnitType.name).to.eql([]);
       expect(raider.moves().value(), UnitType.name).to.equal(0);
+      expect(raider.active(), UnitType.name).to.be.false;
     }
   });
 

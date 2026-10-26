@@ -16,7 +16,10 @@ exports.RANSOM = 100;
  * so a leader who gives up pays nothing.
  */
 const getRules = (game) => [
-    new Destroyed_1.default('civ1-barbarians:unit/destroyed/ransom', new Criterion_1.default((unit) => unit instanceof Units_1.Diplomat && (0, isBarbarian_1.default)(unit.player())), new Criterion_1.default((unit, player) => player !== null && !(0, isBarbarian_1.default)(player)), new Effect_1.default((unit, player) => {
+    new Destroyed_1.default('civ1-barbarians:unit/destroyed/ransom', new Criterion_1.default((unit) => unit instanceof Units_1.Diplomat && (0, isBarbarian_1.default)(unit.player())), new Criterion_1.default((unit, player) => player !== null && !(0, isBarbarian_1.default)(player)), 
+    // Once: a leader aboard a ship goes down with it, and then comes up again in the defeated stack, as
+    //  `civ1-unit`'s count-loss rule allows for.
+    new Criterion_1.default((unit) => !unit.destroyed()), new Effect_1.default((unit, player) => {
         game.playerTreasuries
             .getByPlayerAndType(player, Gold_1.default)
             .add(exports.RANSOM);

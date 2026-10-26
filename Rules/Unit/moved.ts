@@ -92,6 +92,7 @@ export const getRules = (game: PillageGame): Moved[] => [
       });
 
       unit.moves().set(0);
+      unit.setActive(false);
     })
   ),
 ];
