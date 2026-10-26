@@ -51,6 +51,7 @@ const getRules = (game) => [
             game.rules.process(Pillaged_1.default, tile, improvement);
         });
         unit.moves().set(0);
+        unit.setActive(false);
     })),
 ];
 exports.getRules = getRules;

@@ -30,6 +30,9 @@ export const getRules = (
       (unit: Unit, player: Player | null): boolean =>
         player !== null && !isBarbarian(player)
     ),
+    // Once: a leader aboard a ship goes down with it, and then comes up again in the defeated stack, as
+    //  `civ1-unit`'s count-loss rule allows for.
+    new Criterion((unit: Unit): boolean => !unit.destroyed()),
     new Effect((unit: Unit, player: Player | null): void => {
       game.playerTreasuries
         .getByPlayerAndType(player as Player, Gold)
