@@ -1,52 +1,45 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRules = exports.availableToBarbarians = exports.CIVILIZATIONS_NEEDED = void 0;
+exports.getRules = exports.barbarianUnit = void 0;
 const Build_1 = require("@civ-clone/core-city-build/Rules/Build");
 const Units_1 = require("@civ-clone/civ1-unit/Units");
-const Types_1 = require("@civ-clone/civ1-unit/Types");
-const Attack_1 = require("@civ-clone/core-unit/Yields/Attack");
-const Yield_1 = require("@civ-clone/core-unit/Rules/Yield");
 const Criterion_1 = require("@civ-clone/core-rule/Criterion");
 const Effect_1 = require("@civ-clone/core-rule/Effect");
+const Explosives_1 = require("@civ-clone/base-science-advance-explosives/Explosives");
+const RuleIds_1 = require("../../RuleIds");
+const anyoneHas_1 = require("../../lib/anyoneHas");
 const isBarbarian_1 = require("@civ-clone/base-civilization-barbarian/isBarbarian");
-const requiredAdvances_1 = require("@civ-clone/civ1-unit/lib/requiredAdvances");
-// How many civilizations must be able to build a unit before a barbarian city can.
-exports.CIVILIZATIONS_NEEDED = 2;
-// A unit type's attack before anything modifies it, by the ruleset's `BaseYield` rules.
-const baseAttack = (UnitType, ruleRegistry) => {
-    const attack = new Attack_1.default();
-    ruleRegistry.process(Yield_1.BaseYield, UnitType, attack);
-    return attack.value();
-};
 /**
- * Whether a barbarian city may build `Item`: a land unit that attacks, other than Settlers, a Diplomat or a Caravan,
- * that at least two civilizations know how to build (civ-clone/web-renderer#27, decision 3). Never a ship, an
- * aircraft or a missile (the barbarians' client moves land units and transports only), an improvement or a Wonder.
- * v474.05's barbarian cities build Legions, then Knights.
+ * The one unit a barbarian city builds, as v474.05 chooses it (civd `ECONOMY.C` `find_slot()`, civ-clone/web-renderer#954):
+ * a Warrior (`UTYPE_MILITIA`) while the barbarians have no unit anywhere, then a Swordman (`UTYPE_LEGION`) until anyone
+ * has Explosives (advance 56), and a Knight (`UTYPE_KNIGHTS`) after:
+ *
+ *     if (troops_total[civ] == 0 && civ != civnow && civ_gov[civ] <= 1)
+ *         return 1;
+ *     if (civ == 0) {
+ *         if (!(advance_owners[56] & 7))
+ *             return 3;
+ *         return 7;
+ *     }
+ *
+ * The barbarians' government is Anarchy for good, so `civ_gov[civ] <= 1` always holds. Their cities never build an
+ * improvement, a Wonder or any other unit, and need no advance for these.
  */
-const availableToBarbarians = (Item, playerRegistry, playerResearchRegistry, ruleRegistry) => {
-    if (!Object.prototype.isPrototypeOf.call(Types_1.Land, Item)) {
-        return false;
+const barbarianUnit = (barbarians, playerResearchRegistry, unitRegistry) => {
+    if (unitRegistry.getByPlayer(barbarians).length === 0) {
+        return Units_1.Warrior;
     }
-    const UnitType = Item;
-    if (UnitType === Units_1.Settlers ||
-        UnitType === Units_1.Diplomat ||
-        UnitType === Units_1.Caravan ||
-        baseAttack(UnitType, ruleRegistry) <= 0) {
-        return false;
-    }
-    const RequiredAdvance = (0, requiredAdvances_1.requiredAdvanceFor)(UnitType);
-    if (RequiredAdvance === null) {
-        return true;
-    }
-    return (playerRegistry
-        .entries()
-        .filter((player) => !(0, isBarbarian_1.default)(player) &&
-        playerResearchRegistry.getByPlayer(player).completed(RequiredAdvance)).length >= exports.CIVILIZATIONS_NEEDED);
+    return (0, anyoneHas_1.default)(playerResearchRegistry, Explosives_1.default) ? Units_1.Knight : Units_1.Swordman;
 };
-exports.availableToBarbarians = availableToBarbarians;
-const getRules = (playerRegistry, playerResearchRegistry, ruleRegistry) => [
-    new Build_1.Build('civ1-barbarians:city/build/raiders-only', new Criterion_1.default((city) => (0, isBarbarian_1.default)(city.player())), new Effect_1.default((city, Item) => new Criterion_1.default(() => (0, exports.availableToBarbarians)(Item, playerRegistry, playerResearchRegistry, ruleRegistry)))),
+exports.barbarianUnit = barbarianUnit;
+/**
+ * What a barbarian city may build: `barbarianUnit`, and nothing else. `civ1-unit`'s advance rules leave barbarian
+ * cities to this one. `civ1-enhanced` lets them build any attacking land unit two civilizations can build
+ * (civ-clone/web-renderer#27), taking this rule's place while its set is on.
+ */
+const getRules = (playerResearchRegistry, unitRegistry) => [
+    new Build_1.Build(RuleIds_1.RAIDERS_ONLY_RULE, new Criterion_1.default((city) => (0, isBarbarian_1.default)(city.player())), new Effect_1.default((city, Item) => new Criterion_1.default(() => Item ===
+        (0, exports.barbarianUnit)(city.player(), playerResearchRegistry, unitRegistry)))),
 ];
 exports.getRules = getRules;
 exports.default = exports.getRules;

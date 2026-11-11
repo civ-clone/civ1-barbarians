@@ -9,7 +9,7 @@ import unitMoved from './Rules/Unit/moved';
 
 export const register = (game: Game): void =>
   game.rules.register(
-    ...cityBuild(game.players, game.playerResearch, game.rules),
+    ...cityBuild(game.playerResearch, game.units),
     ...cityCaptured(game),
     ...goodyHutBarbarians(game),
     ...turnSpawning(game.difficulty),

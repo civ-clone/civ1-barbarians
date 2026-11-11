@@ -38,6 +38,7 @@ import { instance as availableGovernmentRegistryInstance } from '@civ-clone/core
 import { instance as cityNameRegistryInstance } from '@civ-clone/core-civilization/CityNameRegistry';
 import { instance as terrainRegistryInstance } from '@civ-clone/core-terrain/TerrainRegistry';
 import { instance as traitRegistryInstance } from '@civ-clone/core-civilization/TraitRegistry';
+import AIClient from '@civ-clone/core-ai-client/AIClient';
 import Added from '@civ-clone/core-player/Rules/Added';
 import { Anarchy } from '@civ-clone/civ1-government/Governments';
 import Automobile from '@civ-clone/base-science-advance-automobile/Automobile';
@@ -46,6 +47,8 @@ import Chivalry from '@civ-clone/base-science-advance-chivalry/Chivalry';
 import { BarbariansGame } from '../Rules/Turn/start';
 import City from '@civ-clone/core-city/City';
 import CityRegistry from '@civ-clone/core-city/CityRegistry';
+import Client from '@civ-clone/core-client/Client';
+import ClientRegistry from '@civ-clone/core-client/ClientRegistry';
 import CurrentPlayerRegistry from '@civ-clone/core-player/CurrentPlayerRegistry';
 import Build from '@civ-clone/core-city-build/Rules/Build';
 import CivilizationRegistry from '@civ-clone/core-civilization/CivilizationRegistry';
@@ -74,7 +77,7 @@ import Unit from '@civ-clone/core-unit/Unit';
 import UnitRegistry from '@civ-clone/core-unit/UnitRegistry';
 import WorkedTileRegistry from '@civ-clone/core-city/WorkedTileRegistry';
 import World from '@civ-clone/core-world/World';
-import cityBuild, { availableToBarbarians } from '../Rules/City/build';
+import cityBuild, { barbarianUnit as builds } from '../Rules/City/build';
 import cityGold from '../lib/cityGold';
 import { expect } from 'chai';
 import { firstSpawnTurn } from '../Rules/Turn/spawning';
@@ -123,6 +126,7 @@ const createGame = async (): Promise<TestGame> => {
     game = {
       attributes: attributeRegistryInstance,
       cities: new CityRegistry(),
+      clients: new ClientRegistry(),
       cityGrowth: {
         getByCity: (city: City) => ({ size: () => sizes.get(city) ?? 1 }),
       },
@@ -197,15 +201,32 @@ const createGame = async (): Promise<TestGame> => {
   return game;
 };
 
+// A civilization: the human's unless told otherwise.
 const addCivilization = (
   game: TestGame,
   cityAt: [number, number] | null = null,
-  { size = 4, treasury = 100 }: { size?: number; treasury?: number } = {}
+  {
+    size = 4,
+    treasury = 100,
+    client = 'human',
+  }: {
+    size?: number;
+    treasury?: number;
+    client?: 'human' | 'computer' | 'nobody';
+  } = {}
 ): { player: Player; city: City | null } => {
   const player = new Player(game.rules);
 
   game.players.register(player);
   game.gold.set(player, treasury);
+
+  if (client === 'human') {
+    game.clients.register(new Client(player));
+  }
+
+  if (client === 'computer') {
+    game.clients.register(new AIClient(player));
+  }
 
   if (cityAt === null) {
     return { player, city: null };
@@ -377,7 +398,7 @@ describe('sea landings', (): void => {
 });
 
 describe('land uprisings', (): void => {
-  it("rise near any civilization's city, at least 6 away on its land mass, with Horsemen and a Diplomat", async (): Promise<void> => {
+  it("rise near the human's city, at least 6 away on its land mass, with Horsemen and a Diplomat", async (): Promise<void> => {
     const game = await createGame(),
       { player: civilization, city } = addCivilization(game, [5, 5], {
         size: 4,
@@ -431,6 +452,53 @@ describe('land uprisings', (): void => {
 
     expect(events(game, 'barbarians:uprising')).to.have.length(0);
     expect(barbariansOf(game)).to.be.undefined;
+  });
+
+  // v474.05 (civ-clone/web-renderer#954): `civ1-enhanced` lets any civilization's city rise.
+  it("never rise near a computer player's city, nor one whose player has no client, and roll for nothing more", async (): Promise<void> => {
+    for (const client of ['computer', 'nobody'] as const) {
+      const game = await createGame();
+
+      addCivilization(game, [5, 5], { size: 4, treasury: 100, client });
+      game.difficulty.set(Emperor);
+
+      // Slot 0, the city, and what would be a roll of 0 against gold 80 and a square for it.
+      game.rolls.push(0, 0, 12.5 / 13, 6.5 / 13, 0.9);
+      startTurn(game, 34);
+
+      expect(events(game, 'barbarians:uprising'), client).to.have.length(0);
+      expect(barbariansOf(game), client).to.be.undefined;
+      expect(game.rolls, client).to.eql([0, 12.5 / 13, 6.5 / 13, 0.9]);
+    }
+  });
+
+  it("draw the human's city from the same slots as every other civilization's", async (): Promise<void> => {
+    const game = await createGame();
+
+    addCivilization(game, [20, 5], { client: 'computer' });
+
+    const { city } = addCivilization(game, [5, 5], { size: 4, treasury: 100 });
+
+    game.difficulty.set(Emperor);
+
+    // Slot 0 is the computer's city.
+    game.rolls.push(0, 0, 12.5 / 13, 6.5 / 13, 0.9);
+    startTurn(game, 34);
+
+    expect(events(game, 'barbarians:uprising')).to.have.length(0);
+
+    // Slot 1 is the human's.
+    game.rolls.splice(0);
+    game.rolls.push(1.5 / 128, 0, 12.5 / 13, 6.5 / 13, 0.9);
+    startTurn(game, 35);
+
+    const [[, , target]] = events(game, 'barbarians:uprising') as [
+      string,
+      Player,
+      City
+    ][];
+
+    expect(target).to.equal(city);
   });
 
   it('are Musketmen and Cannon in fours once anyone has Industrialization', (): void => {
@@ -595,68 +663,63 @@ describe('the poles', (): void => {
   });
 });
 
+// v474.05's (civ-clone/web-renderer#954): `civ1-enhanced` lets a barbarian city build any attacking land unit two
+//  civilizations can build.
 describe('what a barbarian city builds', (): void => {
-  const rules = new RuleRegistry();
+  it('is a Warrior while the barbarians have no unit, then a Swordman, and a Knight once anyone has Explosives', async (): Promise<void> => {
+    const game = await createGame(),
+      { player } = addCivilization(game),
+      barbarians = barbarianPlayer(game as any, game.world),
+      unit = (): typeof Unit =>
+        builds(barbarians, game.playerResearch, game.units);
 
-  rules.register(...unitYields(undefined, rules));
+    expect(unit(), 'no units').to.equal(Warrior);
 
-  const research = new Map<Player, (typeof Chivalry)[]>(),
-    players = {
-      entries: () => [...research.keys()],
-    },
-    playerResearch = {
-      getByPlayer: (player: Player) => ({
-        completed: (Advance: typeof Chivalry) =>
-          research.get(player)!.includes(Advance),
-      }),
-    },
-    available = (Item: any) =>
-      availableToBarbarians(Item, players as any, playerResearch as any, rules);
+    const raider = barbarianUnit(game, Horseman, [5, 5]);
 
-  it('is an attacking unit at least two civilizations can build, never Settlers, a Diplomat or an improvement', (): void => {
-    const a = {} as Player,
-      b = {} as Player;
+    expect(unit(), 'a unit').to.equal(Swordman);
 
-    research.set(a, [Chivalry]);
-    research.set(b, []);
+    // Chivalry, which Knights need elsewhere, says nothing here.
+    game.playerResearch.getByPlayer(player).addAdvance(Chivalry);
 
-    expect(available(Warrior), 'Warrior needs nothing').to.be.true;
-    expect(available(Settlers), 'Settlers').to.be.false;
-    expect(available(Diplomat), 'Diplomat').to.be.false;
-    expect(available(Knight), 'Knight: one civilization').to.be.false;
-    expect(available(class Granary {}), 'an improvement').to.be.false;
+    expect(unit(), 'Chivalry').to.equal(Swordman);
 
-    research.set(b, [Chivalry]);
+    game.playerResearch.getByPlayer(player).addAdvance(Explosives);
 
-    expect(available(Knight), 'Knight: two civilizations').to.be.true;
-    expect(available(Battleship), 'a ship').to.be.false;
+    expect(unit(), 'Explosives').to.equal(Knight);
+
+    raider.setDestroyed();
+
+    expect(unit(), 'none left').to.equal(Warrior);
   });
 
-  it('is the rule a barbarian city gets, and no other city', (): void => {
-    const registry = new RuleRegistry(),
-      barbarians = { civilization: () => new Barbarian() },
-      civilization = { civilization: () => ({}) },
-      cityOf = (player: unknown) => ({ player: () => player });
+  it("is the only thing a barbarian city may build, and the rule is no other city's", async (): Promise<void> => {
+    const game = await createGame(),
+      { city } = addCivilization(game, [5, 5]),
+      barbarians = barbarianPlayer(game as any, game.world),
+      barbarianCity = { player: () => barbarians } as unknown as City,
+      registry = new RuleRegistry(),
+      can = (city: City, Item: unknown): boolean =>
+        registry
+          .process(Build, city, Item as any)
+          .every((criterion: any): boolean => criterion.validate());
 
-    registry.register(
-      ...cityBuild(players as any, playerResearch as any, rules)
-    );
+    registry.register(...cityBuild(game.playerResearch, game.units));
+    barbarianUnit(game, Horseman, [5, 6]);
 
-    const [forBarbarians] = registry.process(
-      Build,
-      cityOf(barbarians) as any,
-      Warrior as any
-    );
-
-    expect(forBarbarians.validate()).to.be.true;
-    expect(
-      registry
-        .process(Build, cityOf(barbarians) as any, Battleship as any)[0]
-        .validate()
-    ).to.be.false;
-    expect(
-      registry.process(Build, cityOf(civilization) as any, Warrior as any)
-    ).to.have.length(0);
+    expect(can(barbarianCity, Swordman), 'Swordman').to.be.true;
+    [
+      Warrior,
+      Knight,
+      Horseman,
+      Settlers,
+      Diplomat,
+      Battleship,
+      class Granary {},
+    ].forEach((Item): void => {
+      expect(can(barbarianCity, Item), Item.name).to.be.false;
+    });
+    expect(registry.process(Build, city!, Warrior as any)).to.have.length(0);
   });
 });
 

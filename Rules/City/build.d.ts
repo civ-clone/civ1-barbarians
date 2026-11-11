@@ -1,24 +1,36 @@
 import { Build } from '@civ-clone/core-city-build/Rules/Build';
-import { PlayerRegistry } from '@civ-clone/core-player/PlayerRegistry';
+import Player from '@civ-clone/core-player/Player';
 import { PlayerResearchRegistry } from '@civ-clone/core-science/PlayerResearchRegistry';
-import { RuleRegistry } from '@civ-clone/core-rule/RuleRegistry';
-import { IConstructor } from '@civ-clone/core-registry/Registry';
-export declare const CIVILIZATIONS_NEEDED = 2;
+import Unit from '@civ-clone/core-unit/Unit';
+import { UnitRegistry } from '@civ-clone/core-unit/UnitRegistry';
 /**
- * Whether a barbarian city may build `Item`: a land unit that attacks, other than Settlers, a Diplomat or a Caravan,
- * that at least two civilizations know how to build (civ-clone/web-renderer#27, decision 3). Never a ship, an
- * aircraft or a missile (the barbarians' client moves land units and transports only), an improvement or a Wonder.
- * v474.05's barbarian cities build Legions, then Knights.
+ * The one unit a barbarian city builds, as v474.05 chooses it (civd `ECONOMY.C` `find_slot()`, civ-clone/web-renderer#954):
+ * a Warrior (`UTYPE_MILITIA`) while the barbarians have no unit anywhere, then a Swordman (`UTYPE_LEGION`) until anyone
+ * has Explosives (advance 56), and a Knight (`UTYPE_KNIGHTS`) after:
+ *
+ *     if (troops_total[civ] == 0 && civ != civnow && civ_gov[civ] <= 1)
+ *         return 1;
+ *     if (civ == 0) {
+ *         if (!(advance_owners[56] & 7))
+ *             return 3;
+ *         return 7;
+ *     }
+ *
+ * The barbarians' government is Anarchy for good, so `civ_gov[civ] <= 1` always holds. Their cities never build an
+ * improvement, a Wonder or any other unit, and need no advance for these.
  */
-export declare const availableToBarbarians: (
-  Item: IConstructor,
-  playerRegistry: Pick<PlayerRegistry, 'entries'>,
-  playerResearchRegistry: Pick<PlayerResearchRegistry, 'getByPlayer'>,
-  ruleRegistry: RuleRegistry
-) => boolean;
-export declare const getRules: (
-  playerRegistry: PlayerRegistry,
+export declare const barbarianUnit: (
+  barbarians: Player,
   playerResearchRegistry: PlayerResearchRegistry,
-  ruleRegistry: RuleRegistry
+  unitRegistry: UnitRegistry
+) => typeof Unit;
+/**
+ * What a barbarian city may build: `barbarianUnit`, and nothing else. `civ1-unit`'s advance rules leave barbarian
+ * cities to this one. `civ1-enhanced` lets them build any attacking land unit two civilizations can build
+ * (civ-clone/web-renderer#27), taking this rule's place while its set is on.
+ */
+export declare const getRules: (
+  playerResearchRegistry: PlayerResearchRegistry,
+  unitRegistry: UnitRegistry
 ) => Build[];
 export default getRules;
