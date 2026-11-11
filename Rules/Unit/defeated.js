@@ -5,6 +5,7 @@ const Criterion_1 = require("@civ-clone/core-rule/Criterion");
 const Defeated_1 = require("@civ-clone/core-unit/Rules/Defeated");
 const Units_1 = require("@civ-clone/civ1-unit/Units");
 const Effect_1 = require("@civ-clone/core-rule/Effect");
+const RuleIds_1 = require("../../RuleIds");
 const isBarbarian_1 = require("@civ-clone/base-civilization-barbarian/isBarbarian");
 const ransom_1 = require("../../lib/ransom");
 /**
@@ -15,7 +16,7 @@ const ransom_1 = require("../../lib/ransom");
  * leader killed in a stack too, and takes this one's place while it is in force.
  */
 const getRules = (game) => [
-    new Defeated_1.default('civ1-barbarians:unit/defeated/ransom', 
+    new Defeated_1.default(RuleIds_1.RANSOM_RULE, 
     // `Attack` processes `Defeated` for a losing attacker too: the action's unit is the one that attacked.
     new Criterion_1.default((unit, by, action) => !action || action.unit() !== unit), new Criterion_1.default((unit) => unit instanceof Units_1.Diplomat && (0, isBarbarian_1.default)(unit.player())), new Criterion_1.default((unit, by) => !(0, isBarbarian_1.default)(by.player())), new Effect_1.default((unit, by) => (0, ransom_1.default)(game, by.player(), unit))),
 ];

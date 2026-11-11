@@ -3,6 +3,7 @@ import Criterion from '@civ-clone/core-rule/Criterion';
 import Defeated from '@civ-clone/core-unit/Rules/Defeated';
 import { Diplomat } from '@civ-clone/civ1-unit/Units';
 import Effect from '@civ-clone/core-rule/Effect';
+import { RANSOM_RULE } from '../../RuleIds';
 import Unit from '@civ-clone/core-unit/Unit';
 import isBarbarian from '@civ-clone/base-civilization-barbarian/isBarbarian';
 import payRansom, { RansomGame } from '../../lib/ransom';
@@ -16,7 +17,7 @@ import payRansom, { RansomGame } from '../../lib/ransom';
  */
 export const getRules = (game: RansomGame): Defeated[] => [
   new Defeated(
-    'civ1-barbarians:unit/defeated/ransom',
+    RANSOM_RULE,
     // `Attack` processes `Defeated` for a losing attacker too: the action's unit is the one that attacked.
     new Criterion(
       (unit: Unit, by: Unit, action?: Action): boolean =>
