@@ -846,12 +846,13 @@ describe('ransom', (): void => {
     expect(events(game, 'barbarians:ransom')).to.have.length(0);
   });
 
-  it('pays once for a leader who defends his stack and loses', async (): Promise<void> => {
+  // A leader defends only a stack with nothing stronger in it: here, another leader.
+  it('pays once for two leaders together: for the one who defends and loses, not the one killed with him', async (): Promise<void> => {
     const game = await withCombat(),
       { player } = addCivilization(game, [5, 5], { treasury: 0 }),
       attacker = civilizationUnit(game, player, Horseman, [12, 4]),
       leader = barbarianUnit(game, Diplomat, [12, 5]),
-      other = barbarianUnit(game, Swordman, [12, 5]);
+      other = barbarianUnit(game, Diplomat, [12, 5]);
 
     fight(game, attacker, leader);
 
