@@ -33,6 +33,10 @@ research. The host answers `player:spawned` with a client for it, as `simple-ai-
   v474.05, only the defender counts: a leader killed in a stack another unit defended pays nothing.
   `civ1-enhanced` pays for those too, superseding this rule while its set is on (civ-clone/web-renderer#954).
 
+The human: v474.05's one human is, here, every player whose seat is not played by the computer (`civ1-difficulty`'s
+`isHuman`: a player with a client, none of them an `AIClient`). In a game with no such seat (all computer players, or a
+game only watched), the uprising rule never raises an uprising.
+
 Departures from v474.05, decided on civ-clone/web-renderer#27 and #169: the ship lands on the city's own continent.
 Where uprisings strike and what barbarian cities build differ only in `civ1-enhanced` (civ-clone/web-renderer#954).
 Combat multipliers, ransom, pillage, city burning and the leader's fate are civ-clone/web-renderer#170 and #171; the
