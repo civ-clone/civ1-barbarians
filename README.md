@@ -25,6 +25,10 @@ research. The host answers `player:spawned` with a client for it, as `simple-ai-
 - `civ1-barbarians:city/build/raiders-only`: a barbarian city builds only units that attack, other than Settlers,
   Diplomats and Caravans, that at least two civilizations can build. Never an improvement or a Wonder. `civ1-unit`'s
   advance rules leave barbarian cities to this one.
+- `civ1-barbarians:unit/defeated/ransom`: a barbarian leader (the group's Diplomat) who defends and loses pays the
+  civilization that beat him 100 gold (`lib/ransom`), and emits `barbarians:ransom` (player, leader, gold). As
+  v474.05, only the defender counts: a leader killed in a stack another unit defended pays nothing.
+  `civ1-enhanced` pays for those too, superseding this rule while its set is on (civ-clone/web-renderer#954).
 
 Departures from v474.05, decided on civ-clone/web-renderer#27 and #169: uprisings threaten every civilization, not
 only the human; the ship lands on the city's own continent. Combat multipliers, ransom, pillage, city burning and the
