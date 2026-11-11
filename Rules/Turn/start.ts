@@ -1,11 +1,7 @@
 import {
-  Cannon,
-  Chariot,
   Diplomat,
   Frigate,
-  Horseman,
   Knight,
-  Musketman,
   Sail,
   Swordman,
 } from '@civ-clone/civ1-unit/Units';
@@ -13,21 +9,21 @@ import barbarianPlayer, {
   BarbarianPlayerGame,
 } from '../../lib/barbarianPlayer';
 import spawnUnits, { createUnit } from '../../lib/spawnUnits';
+import landUprising, { LandUprisingGame } from '../../lib/landUprising';
 import Automobile from '@civ-clone/base-science-advance-automobile/Automobile';
 import City from '@civ-clone/core-city/City';
 import Criterion from '@civ-clone/core-rule/Criterion';
 import Effect from '@civ-clone/core-rule/Effect';
 import Explosives from '@civ-clone/base-science-advance-explosives/Explosives';
 import { Game } from '@civ-clone/core-game';
-import Industrialization from '@civ-clone/base-science-advance-industrialization/Industrialization';
 import NavalTransport from '@civ-clone/base-unit-type-naval-transport/NavalTransport';
 import Start from '@civ-clone/core-turn-based-game/Rules/Start';
+import { LAND_UPRISING_RULE } from '../../RuleIds';
 import Tile from '@civ-clone/core-world/Tile';
 import Turn from '@civ-clone/core-turn-based-game/Turn';
 import Unit from '@civ-clone/core-unit/Unit';
 import anyoneHas from '../../lib/anyoneHas';
-import cityGold from '../../lib/cityGold';
-import isBarbarian from '@civ-clone/base-civilization-barbarian/isBarbarian';
+import isHuman from '@civ-clone/civ1-difficulty/isHuman';
 import { polarRows } from '../../lib/polar';
 import { turnCount } from './spawning';
 import spawning from '../../lib/spawning';
@@ -35,15 +31,8 @@ import waterBodyHasAtLeast from '../../lib/waterBody';
 import worldOf from '../../lib/worldOf';
 
 export type BarbariansGame = BarbarianPlayerGame &
-  Pick<
-    Game,
-    | 'cities'
-    | 'cityGrowth'
-    | 'landMasses'
-    | 'playerResearch'
-    | 'playerTreasuries'
-    | 'units'
-  >;
+  LandUprisingGame &
+  Pick<Game, 'clients'>;
 
 // A raiding ship appears no nearer than this many of v474.05's 50 rows to either edge of the map.
 export const SEA_POLAR_ROWS = 3;
@@ -52,35 +41,7 @@ export const SEA_POLAR_ROWS = 3;
 export const raidersAtSea = (turnCount: number): number =>
   Math.min(Math.max(Math.floor(turnCount / 150) + 1, 1), 3);
 
-export const uprisingSize = (citySize: number, roll: number): number =>
-  Math.min(Math.max(Math.floor(roll * Math.floor(citySize / 2)), 2), 99) + 1;
-
-// Horsemen and Chariots in blocks of four (Musketmen and Cannon once anyone has Industrialization), the last a Diplomat:
-//  the leader of the uprising.
-export const uprisingUnits = (
-  count: number,
-  industrial: boolean
-): (typeof Unit)[] =>
-  new Array(count).fill(null).map((_, i: number): typeof Unit => {
-    if (i === count - 1) {
-      return Diplomat;
-    }
-
-    if (industrial) {
-      return (i & 4) === 0 ? Musketman : Cannon;
-    }
-
-    return (i & 4) === 0 ? Horseman : Chariot;
-  });
-
-const nearestCity = (tile: Tile, cities: City[]): City =>
-  cities.reduce(
-    (nearest: City, city: City): City =>
-      tile.distanceFrom(city.tile()) < tile.distanceFrom(nearest.tile())
-        ? city
-        : nearest,
-    cities[0]
-  );
+export { uprisingSize, uprisingUnits } from '../../lib/landUprising';
 
 /**
  * When barbarians appear, once every player has moved in v474.05 (`GameEngine.cs` `F0_1238_0980`), at the start of
@@ -156,92 +117,24 @@ export const getRules = (game: BarbariansGame): Start[] => [
     })
   ),
 
-  // Each turn one of 128 city slots is drawn, as v474.05 does; an occupied one may rise with a chance of its gold in
-  //  100. Any civilization's city, not only the human's (civ-clone/web-renderer#27). The square is found by up to 99
-  //  tries within 6 of the city, each re-centred on the city nearest the last try: empty land on that city's land mass,
-  //  at least 6 from it, with no civilization's unit next to it. The group is sized by that city.
+  // Each turn one of 128 city slots is drawn, as v474.05 does, and a city there may rise (`lib/landUprising`). As
+  //  v474.05, only the human's city (civd `TURN.C` `uprising()`, civ-clone/web-renderer#954):
+  //
+  //      i = rand_scaled(128);
+  //      if (townbuf[i].status == -1 || townbuf[i].owner != civnow)
+  //          return;
+  //
+  //  The square is found near it, re-centred on the city nearest each try, so the uprising may be nearer another
+  //  civilization's city, and is sized by that one. `civ1-enhanced` lets any civilization's city rise
+  //  (civ-clone/web-renderer#27), taking this rule's place while its set is on.
   new Start(
-    'civ1-barbarians:turn/start/land-uprising',
+    LAND_UPRISING_RULE,
     new Criterion((turn: Turn): boolean => spawning(game.rules, turn)),
-    new Effect((): void => {
-      const cities = game.cities
-          .entries()
-          .filter(
-            (city: City): boolean =>
-              !city.destroyed() && !isBarbarian(city.player())
-          ),
-        slot = Math.floor(game.rng() * 128);
-
-      if (slot >= cities.length) {
-        return;
-      }
-
-      const city = cities[slot];
-
-      if (Math.floor(game.rng() * 100) >= cityGold(city, game)) {
-        return;
-      }
-
-      const world = city.tile().map(),
-        allCities = game.cities
-          .entries()
-          .filter((city: City): boolean => !city.destroyed());
-
-      let target = city,
-        tile: Tile | null = null;
-
-      for (let tries = 0; tries < 99; tries++) {
-        const centre = target.tile(),
-          x = centre.x() + Math.floor(game.rng() * 13) - 6,
-          y = centre.y() + Math.floor(game.rng() * 13) - 6;
-
-        if (y < 0 || y >= world.height()) {
-          continue;
-        }
-
-        const candidate = world.get(x, y);
-
-        target = nearestCity(candidate, allCities);
-
-        if (
-          candidate.distanceFrom(target.tile()) < 6 ||
-          !candidate.isLand() ||
-          game.units.getByTile(candidate).length > 0 ||
-          game.landMasses.getByTile(candidate) !==
-            game.landMasses.getByTile(target.tile()) ||
-          candidate
-            .getNeighbours()
-            .some(
-              (neighbour: Tile): boolean =>
-                neighbour.isLand() &&
-                game.units
-                  .getByTile(neighbour)
-                  .some((unit: Unit): boolean => !isBarbarian(unit.player()))
-            )
-        ) {
-          continue;
-        }
-
-        tile = candidate;
-
-        break;
-      }
-
-      if (tile === null) {
-        return;
-      }
-
-      const count = uprisingSize(
-          game.cityGrowth.getByCity(target).size(),
-          game.rng()
-        ),
-        industrial = anyoneHas(game.playerResearch, Industrialization),
-        player = barbarianPlayer(game, world);
-
-      spawnUnits(player, tile, uprisingUnits(count, industrial), game.rules);
-
-      game.engine.emit('barbarians:uprising', player, target, tile, industrial);
-    })
+    new Effect((): void =>
+      landUprising(game, (city: City): boolean =>
+        isHuman(city.player(), game.clients)
+      )
+    )
   ),
 ];
 

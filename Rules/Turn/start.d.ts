@@ -1,24 +1,13 @@
 import { BarbarianPlayerGame } from '../../lib/barbarianPlayer';
+import { LandUprisingGame } from '../../lib/landUprising';
 import { Game } from '@civ-clone/core-game';
 import Start from '@civ-clone/core-turn-based-game/Rules/Start';
-import Unit from '@civ-clone/core-unit/Unit';
 export type BarbariansGame = BarbarianPlayerGame &
-  Pick<
-    Game,
-    | 'cities'
-    | 'cityGrowth'
-    | 'landMasses'
-    | 'playerResearch'
-    | 'playerTreasuries'
-    | 'units'
-  >;
+  LandUprisingGame &
+  Pick<Game, 'clients'>;
 export declare const SEA_POLAR_ROWS = 3;
 export declare const raidersAtSea: (turnCount: number) => number;
-export declare const uprisingSize: (citySize: number, roll: number) => number;
-export declare const uprisingUnits: (
-  count: number,
-  industrial: boolean
-) => (typeof Unit)[];
+export { uprisingSize, uprisingUnits } from '../../lib/landUprising';
 /**
  * When barbarians appear, once every player has moved in v474.05 (`GameEngine.cs` `F0_1238_0980`), at the start of
  * the next turn here (`turnCount`), with the barbarians first to move. Each rule's gate is every `Spawning` rule
