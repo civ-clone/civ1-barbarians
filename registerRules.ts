@@ -4,7 +4,7 @@ import cityCaptured from './Rules/City/captured';
 import goodyHutBarbarians from './Rules/GoodyHut/barbarians';
 import turnSpawning from './Rules/Turn/spawning';
 import turnStart from './Rules/Turn/start';
-import unitDestroyed from './Rules/Unit/destroyed';
+import unitDefeated from './Rules/Unit/defeated';
 import unitMoved from './Rules/Unit/moved';
 
 export const register = (game: Game): void =>
@@ -14,7 +14,7 @@ export const register = (game: Game): void =>
     ...goodyHutBarbarians(game),
     ...turnSpawning(game.difficulty),
     ...turnStart(game),
-    ...unitDestroyed(game),
+    ...unitDefeated(game),
     ...unitMoved(game)
   );
 

@@ -23,7 +23,12 @@ import Destroyed from '@civ-clone/core-unit/Rules/Destroyed';
 import Moved from '@civ-clone/core-unit/Rules/Moved';
 import TileImprovementRegistry from '@civ-clone/core-tile-improvement/TileImprovementRegistry';
 import barbarianPlayer from '../lib/barbarianPlayer';
-import { RANSOM } from '../Rules/Unit/destroyed';
+import { RANSOM } from '../lib/ransom';
+import Action from '@civ-clone/core-unit/Action';
+import Defeated from '@civ-clone/core-unit/Rules/Defeated';
+import UnitLossRegistry from '@civ-clone/core-unit/UnitLossRegistry';
+import unitDefeated from '@civ-clone/civ1-unit/Rules/Unit/defeated';
+import unitDestroyed from '@civ-clone/civ1-unit/Rules/Unit/destroyed';
 import { unleashesBarbarians } from '@civ-clone/civ1-goody-hut/Rules/GoodyHut/action';
 import tileImprovementPillaged from '@civ-clone/civ1-world/Rules/TileImprovement/pillaged';
 import { raidersAtSea, uprisingSize, uprisingUnits } from '../Rules/Turn/start';
@@ -674,6 +679,24 @@ const barbarianUnit = (
   return unit;
 };
 
+const civilizationUnit = (
+  game: TestGame,
+  player: Player,
+  UnitType: typeof Unit,
+  at: [number, number]
+): Unit => {
+  const unit = new (UnitType as any)(
+    null,
+    player,
+    game.world.get(...at),
+    game.rules
+  );
+
+  game.units.register(unit);
+
+  return unit;
+};
+
 const hutAt = (game: TestGame, at: [number, number]) =>
   ({ tile: () => game.world.get(...at) } as any);
 
@@ -750,42 +773,117 @@ describe('a goody hut', (): void => {
 });
 
 describe('ransom', (): void => {
-  it('pays 100 gold for a barbarian leader killed by a civilization', async (): Promise<void> => {
-    const game = await createGame(),
+  // A battle as `Attack` ends one: `Defeated` for the loser, with the attack, whose unit is the attacker. civ1-unit's
+  //  rules take the defeated defender's stack with it outside a city.
+  const fight = (
+    game: TestGame,
+    attacker: Unit,
+    defender: Unit,
+    attackerWins: boolean = true
+  ): void => {
+    const action = { unit: (): Unit => attacker } as unknown as Action;
+
+    if (attackerWins) {
+      game.rules.process(Defeated, defender, attacker, action);
+
+      return;
+    }
+
+    game.rules.process(Defeated, attacker, defender, action);
+  };
+
+  const withCombat = async (): Promise<TestGame> => {
+    const game = await createGame();
+
+    game.rules.register(
+      ...unitDefeated(
+        game.cities,
+        game.rules,
+        game.tileImprovements,
+        game.units,
+        game.engine
+      ),
+      // The registries it is not given are only ever empty here.
+      ...unitDestroyed(
+        game.units,
+        undefined,
+        game.engine,
+        undefined,
+        new UnitLossRegistry()
+      )
+    );
+
+    return game;
+  };
+
+  it('pays 100 gold for a lone barbarian leader beaten by a civilization', async (): Promise<void> => {
+    const game = await withCombat(),
       { player } = addCivilization(game, [5, 5], { treasury: 0 }),
+      attacker = civilizationUnit(game, player, Horseman, [12, 4]),
       leader = barbarianUnit(game, Diplomat, [12, 5]);
 
-    game.rules.process(Destroyed, leader, player);
+    fight(game, attacker, leader);
 
     expect(RANSOM).to.equal(100);
+    expect(leader.destroyed()).true;
     expect(game.gold.get(player)).to.equal(100);
     expect(events(game, 'barbarians:ransom')).to.eql([
       ['barbarians:ransom', player, leader, 100],
     ]);
   });
 
-  it('pays once for a leader destroyed twice, as cargo and again in the stack', async (): Promise<void> => {
-    const game = await createGame(),
+  it('pays nothing for a leader killed in a stack another unit defended, as v474.05', async (): Promise<void> => {
+    const game = await withCombat(),
       { player } = addCivilization(game, [5, 5], { treasury: 0 }),
+      attacker = civilizationUnit(game, player, Horseman, [12, 4]),
+      defender = barbarianUnit(game, Swordman, [12, 5]),
       leader = barbarianUnit(game, Diplomat, [12, 5]);
 
-    game.rules.process(Destroyed, leader, player);
-    leader.setDestroyed();
-    game.rules.process(Destroyed, leader, player);
+    fight(game, attacker, defender);
 
-    expect(game.gold.get(player)).to.equal(100);
-    expect(events(game, 'barbarians:ransom')).to.have.length(1);
+    expect(leader.destroyed()).true;
+    expect(game.gold.get(player)).to.equal(0);
+    expect(events(game, 'barbarians:ransom')).to.have.length(0);
   });
 
-  it('pays nothing for a leader who disbands, nor for any other barbarian', async (): Promise<void> => {
-    const game = await createGame(),
+  // A leader defends only a stack with nothing stronger in it: here, another leader.
+  it('pays once for two leaders together: for the one who defends and loses, not the one killed with him', async (): Promise<void> => {
+    const game = await withCombat(),
+      { player } = addCivilization(game, [5, 5], { treasury: 0 }),
+      attacker = civilizationUnit(game, player, Horseman, [12, 4]),
+      leader = barbarianUnit(game, Diplomat, [12, 5]),
+      other = barbarianUnit(game, Diplomat, [12, 5]);
+
+    fight(game, attacker, leader);
+
+    expect(other.destroyed()).true;
+    expect(game.gold.get(player)).to.equal(100);
+    expect(events(game, 'barbarians:ransom')).to.eql([
+      ['barbarians:ransom', player, leader, 100],
+    ]);
+  });
+
+  it('pays nothing for a leader who attacks and loses, who disbands, nor for any other barbarian', async (): Promise<void> => {
+    const game = await withCombat(),
+      { player } = addCivilization(game, [5, 5], { treasury: 0 }),
+      defender = civilizationUnit(game, player, Horseman, [12, 4]);
+
+    fight(game, barbarianUnit(game, Diplomat, [12, 5]), defender, false);
+    game.rules.process(Destroyed, barbarianUnit(game, Diplomat, [12, 6]), null);
+    fight(game, defender, barbarianUnit(game, Horseman, [12, 7]));
+
+    expect(game.gold.get(player)).to.equal(0);
+    expect(events(game, 'barbarians:ransom')).to.have.length(0);
+  });
+
+  it('pays nothing to a barbarian who beats a barbarian leader', async (): Promise<void> => {
+    const game = await withCombat(),
       { player } = addCivilization(game, [5, 5], { treasury: 0 });
 
-    game.rules.process(Destroyed, barbarianUnit(game, Diplomat, [12, 5]), null);
-    game.rules.process(
-      Destroyed,
-      barbarianUnit(game, Horseman, [12, 6]),
-      player
+    fight(
+      game,
+      barbarianUnit(game, Horseman, [12, 4]),
+      barbarianUnit(game, Diplomat, [12, 5])
     );
 
     expect(game.gold.get(player)).to.equal(0);
