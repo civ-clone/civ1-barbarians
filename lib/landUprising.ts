@@ -11,6 +11,7 @@ import { Game } from '@civ-clone/core-game';
 import Industrialization from '@civ-clone/base-science-advance-industrialization/Industrialization';
 import Tile from '@civ-clone/core-world/Tile';
 import Unit from '@civ-clone/core-unit/Unit';
+import World from '@civ-clone/core-world/World';
 import anyoneHas from './anyoneHas';
 import cityGold from './cityGold';
 import isBarbarian from '@civ-clone/base-civilization-barbarian/isBarbarian';
@@ -49,6 +50,25 @@ export const uprisingUnits = (
     return (i & 4) === 0 ? Horseman : Chariot;
   });
 
+// A square drawn within 6 of `centre`: on the square grid from the 13 × 13 box round it, as v474.05 draws it (`null`
+//  past the top or bottom edge, which doesn't wrap); on another grid from the squares its topology puts within 6, so
+//  the search reaches as far in every direction (civ-clone/web-renderer#980).
+const near = (world: World, centre: Tile, rng: () => number): Tile | null => {
+  const topology = world.topology();
+
+  if (topology.id() === 'square') {
+    const x = centre.x() + Math.floor(rng() * 13) - 6,
+      y = centre.y() + Math.floor(rng() * 13) - 6;
+
+    return y < 0 || y >= world.height() ? null : world.get(x, y);
+  }
+
+  const area = topology.area(centre.x(), centre.y(), 6),
+    [x, y] = area[Math.floor(rng() * area.length)];
+
+  return world.get(x, y);
+};
+
 const nearestCity = (tile: Tile, cities: City[]): City =>
   cities.reduce(
     (nearest: City, city: City): City =>
@@ -61,7 +81,8 @@ const nearestCity = (tile: Tile, cities: City[]): City =>
 /**
  * A turn's chance of an uprising on land, as v474.05's (civd `TURN.C` `uprising()`): one of 128 city slots is drawn,
  * and a city there that `rises` may rise with a chance of its gold in 100. The square is found by up to 99 tries within
- * 6 of the city, each re-centred on the city nearest the last try: empty land on that city's land mass, at least 6 from
+ * 6 of the city (on a grid other than the square one, of the squares its topology puts within 6), each re-centred on
+ * the city nearest the last try: empty land on that city's land mass, at least 6 from
  * it, with no civilization's unit next to it. The group is sized by that city. Which cities may rise is the rule's:
  * whichever rule raises an uprising does so through this, so the units and `barbarians:uprising` are the same
  * (civ-clone/web-renderer#954).
@@ -101,15 +122,11 @@ export const landUprising = (
     tile: Tile | null = null;
 
   for (let tries = 0; tries < 99; tries++) {
-    const centre = target.tile(),
-      x = centre.x() + Math.floor(game.rng() * 13) - 6,
-      y = centre.y() + Math.floor(game.rng() * 13) - 6;
+    const candidate = near(world, target.tile(), game.rng);
 
-    if (y < 0 || y >= world.height()) {
+    if (candidate === null) {
       continue;
     }
-
-    const candidate = world.get(x, y);
 
     target = nearestCity(candidate, allCities);
 
