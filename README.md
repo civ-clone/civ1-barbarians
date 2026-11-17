@@ -14,11 +14,27 @@ for good, it has no advances and it is never offered research. The host answers 
 it, as `simple-ai-client`'s `BarbarianClient` is. That client falls back to v474.05's leader (the Diplomat) and polar
 exit (2 of 50 rows), so this package registers no `LeadsGroup` or `LeavesMap` rule.
 
+## Activity
+
+How active the barbarians are is a parameter (civ-clone/web-renderer#1008): `lib/activity`'s `activityOf(rules)` gives
+the numbers the gate, the sea landings and the uprisings play by, from the first `Activity` rule (`Rules/Activity`) that
+answers. This package registers none, so with nothing answering they are v474.05's, `CLASSIC_ACTIVITY`:
+
+- `onset` 30: the first turn is (5 − level) × 30. `Infinity` lets no sea landing or uprising happen at all.
+- `landingEvery` 8: a sea landing every 8th turn. 0 for none.
+- `raidersEvery` 150: the raiders at sea grow by one every 150 turns, from 1 to 3.
+- `extra` 0: added to the raiders at sea, up to the 3 a Frigate holds with their leader, and to an uprising.
+- `uprisingChance` 1: an uprising's chance is its city's gold in 100, times this. 0 for none.
+
+The ship is a Frigate whenever there are 3 raiders (from turn 300 at v474.05's numbers), so every raider and the leader
+fit aboard. A goody hut's horde is the same at any level. `civ1-enhanced` offers a choice of levels, with their
+numbers, as a rule set.
+
 ## Rules
 
 - `Spawning` (`Rules/Spawning`): whether barbarians may appear this turn. Every `Spawning` rule must pass. The one
   here, `civ1-barbarians:spawning/from-turn`, allows them from turn (5 − level) × 30 in v474.05's count: 150 on
-  Chieftain, 30 on Emperor.
+  Chieftain, 30 on Emperor (the activity level's onset in place of 30).
 - `civ1-barbarians:turn/start/sea-landing`: every 8th turn, until anyone has Automobile, a Sail (a Frigate from turn
   300) appears on an empty square of a sea of at least 16 squares, clear of the poles, with 1 to 3 Swordmen (Knights
   once anyone has Explosives) and a Diplomat aboard. Emits `barbarians:raiders-at-sea` (player, ship, tile). Where it

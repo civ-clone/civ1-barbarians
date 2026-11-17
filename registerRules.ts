@@ -12,7 +12,7 @@ export const register = (game: Game): void =>
     ...cityBuild(game.playerResearch, game.units),
     ...cityCaptured(game),
     ...goodyHutBarbarians(game),
-    ...turnSpawning(game.difficulty),
+    ...turnSpawning(game.difficulty, game.rules),
     ...turnStart(game),
     ...unitDefeated(game),
     ...unitMoved(game)

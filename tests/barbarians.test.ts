@@ -31,7 +31,13 @@ import unitDefeated from '@civ-clone/civ1-unit/Rules/Unit/defeated';
 import unitDestroyed from '@civ-clone/civ1-unit/Rules/Unit/destroyed';
 import { unleashesBarbarians } from '@civ-clone/civ1-goody-hut/Rules/GoodyHut/action';
 import tileImprovementPillaged from '@civ-clone/civ1-world/Rules/TileImprovement/pillaged';
-import { raidersAtSea, uprisingSize, uprisingUnits } from '../Rules/Turn/start';
+import {
+  landingDue,
+  raidersAtSea,
+  raidersAtSeaAt,
+  uprisingSize,
+  uprisingUnits,
+} from '../Rules/Turn/start';
 import { instance as advanceRegistryInstance } from '@civ-clone/core-science/AdvanceRegistry';
 import { instance as attributeRegistryInstance } from '@civ-clone/core-civilization/AttributeRegistry';
 import { instance as availableGovernmentRegistryInstance } from '@civ-clone/core-government/AvailableGovernmentRegistry';
@@ -56,6 +62,7 @@ import Created from '@civ-clone/core-unit/Rules/Created';
 import Effect from '@civ-clone/core-rule/Effect';
 import Engine from '@civ-clone/core-engine/Engine';
 import Explosives from '@civ-clone/base-science-advance-explosives/Explosives';
+import Gold from '@civ-clone/base-city-yield-gold/Gold';
 import GameDifficultyRegistry from '@civ-clone/core-difficulty/GameDifficultyRegistry';
 import Generator from '@civ-clone/civ1-player/tests/lib/Generator';
 import Industrialization from '@civ-clone/base-science-advance-industrialization/Industrialization';
@@ -80,7 +87,12 @@ import World from '@civ-clone/core-world/World';
 import cityBuild, { barbarianUnit as builds } from '../Rules/City/build';
 import cityGold from '../lib/cityGold';
 import { expect } from 'chai';
-import { firstSpawnTurn } from '../Rules/Turn/spawning';
+import { firstSpawnTurn, firstSpawnTurnAt } from '../Rules/Turn/spawning';
+import activityOf, {
+  BarbarianActivity,
+  CLASSIC_ACTIVITY,
+} from '../lib/activity';
+import Activity from '../Rules/Activity';
 import { generateWorld } from '@civ-clone/core-world/tests/lib/buildWorld';
 import isBarbarian from '@civ-clone/base-civilization-barbarian/isBarbarian';
 import { nearPole, polarRows } from '../lib/polar';
@@ -125,6 +137,13 @@ const createGame = async (
     gold = new Map<Player, number>(),
     spawnedEvents: unknown[][] = [],
     rolls: number[] = [],
+    treasury = (player: Player) => ({
+      add: (value: number): void => {
+        gold.set(player, (gold.get(player) ?? 0) + value);
+      },
+      value: () => gold.get(player) ?? 0,
+      yield: () => Gold,
+    }),
     game = {
       attributes: attributeRegistryInstance,
       cities: new CityRegistry(),
@@ -142,12 +161,9 @@ const createGame = async (
       playerGovernments: new PlayerGovernmentRegistry(),
       playerResearch: new PlayerResearchRegistry(),
       playerTreasuries: {
-        getByPlayerAndType: (player: Player) => ({
-          add: (value: number): void => {
-            gold.set(player, (gold.get(player) ?? 0) + value);
-          },
-          value: () => gold.get(player) ?? 0,
-        }),
+        getByPlayerAndType: (player: Player) => treasury(player),
+        // base-barbarians' `payRansom` pays into the player's Gold treasury from 0.1.1 (civ-clone/web-renderer#963).
+        getByPlayer: (player: Player) => [treasury(player)],
       },
       playerWorlds: new PlayerWorldRegistry(),
       players: new PlayerRegistry(),
@@ -1102,5 +1118,258 @@ describe('pillage', (): void => {
       game.world.get(7, 5),
       "near the barbarians' own city"
     );
+  });
+});
+
+describe('the activity level (civ-clone/web-renderer#1008)', (): void => {
+  // A game whose `Activity` rule answers v474.05's numbers with `changes`.
+  const at = async (changes: Partial<BarbarianActivity>): Promise<TestGame> => {
+    const game = await createGame();
+
+    game.rules.register(
+      new Activity(
+        new Effect(
+          (): BarbarianActivity => ({ ...CLASSIC_ACTIVITY, ...changes })
+        )
+      )
+    );
+
+    return game;
+  };
+
+  it("is v474.05's with no Activity rule, or none switched on, and otherwise the rule's", async (): Promise<void> => {
+    const game = await createGame();
+
+    expect(activityOf(game.rules)).to.equal(CLASSIC_ACTIVITY);
+    expect(CLASSIC_ACTIVITY).to.eql({
+      onset: 30,
+      landingEvery: 8,
+      raidersEvery: 150,
+      extra: 0,
+      uprisingChance: 1,
+    });
+
+    const rule = new Activity(
+      new Effect(
+        (): BarbarianActivity => ({ ...CLASSIC_ACTIVITY, landingEvery: 16 })
+      )
+    );
+
+    game.rules.register(rule);
+
+    expect(activityOf(game.rules).landingEvery).to.equal(16);
+
+    rule.disable();
+
+    expect(activityOf(game.rules)).to.equal(CLASSIC_ACTIVITY);
+  });
+
+  it("gives v474.05's onset, landings and raiders at v474.05's numbers", (): void => {
+    const turns = new Array(700).fill(0).map((_, turn: number) => turn);
+
+    expect(
+      [0, 1, 2, 3, 4].map((level: number) =>
+        firstSpawnTurnAt(level, CLASSIC_ACTIVITY)
+      )
+    ).to.eql([0, 1, 2, 3, 4].map(firstSpawnTurn));
+    expect(
+      turns.map((turn: number) => landingDue(turn, CLASSIC_ACTIVITY))
+    ).to.eql(turns.map((turn: number) => (turn + 1) % 8 === 0));
+    expect(
+      turns.map((turn: number) => raidersAtSeaAt(turn, CLASSIC_ACTIVITY))
+    ).to.eql(turns.map((turn: number) => raidersAtSea(turn)));
+  });
+
+  it('sets the onset, and an onset of Infinity lets nothing land or rise', async (): Promise<void> => {
+    expect(firstSpawnTurnAt(4, { ...CLASSIC_ACTIVITY, onset: 27 })).to.equal(
+      27
+    );
+    expect(firstSpawnTurnAt(0, { ...CLASSIC_ACTIVITY, onset: 33 })).to.equal(
+      165
+    );
+
+    const game = await at({ onset: 33 });
+
+    game.difficulty.set(Emperor);
+    addCivilization(game, [5, 5]);
+
+    // Count 31 is a landing turn ((31 + 1) % 8 === 0) past v474.05's 30 on Emperor, but before 33.
+    game.rolls.push(0, 0.999);
+    startTurn(game, 33);
+
+    expect(events(game, 'barbarians:raiders-at-sea')).to.have.length(0);
+
+    startTurn(game, 41);
+
+    expect(events(game, 'barbarians:raiders-at-sea')).to.have.length(1);
+
+    const never = await at({ onset: Infinity });
+
+    never.difficulty.set(Emperor);
+    addCivilization(never, [5, 5], { size: 4, treasury: 100 });
+
+    for (let turn = 2; turn < 700; turn++) {
+      startTurn(never, turn);
+    }
+
+    expect(never.spawnedEvents).to.eql([]);
+    expect(barbariansOf(never)).to.be.undefined;
+  });
+
+  it('lands every 16th turn with an interval of 16, and never with 0', async (): Promise<void> => {
+    expect(
+      [7, 15, 23, 31, 47].map((turn: number) =>
+        landingDue(turn, { ...CLASSIC_ACTIVITY, landingEvery: 16 })
+      )
+    ).to.eql([false, true, false, true, true]);
+
+    const game = await at({ landingEvery: 16 });
+
+    game.difficulty.set(Emperor);
+    addCivilization(game, [5, 5]);
+
+    // Count 39 ((39 + 1) % 8 === 0) is a landing at 8, not at 16; count 47 is at both.
+    game.rolls.push(0.999);
+    startTurn(game, 41);
+
+    expect(events(game, 'barbarians:raiders-at-sea')).to.have.length(0);
+
+    game.rolls.length = 0;
+    game.rolls.push(0, 0.999);
+    startTurn(game, 49);
+
+    expect(events(game, 'barbarians:raiders-at-sea')).to.have.length(1);
+
+    const none = await at({ landingEvery: 0 });
+
+    none.difficulty.set(Emperor);
+    addCivilization(none, [5, 5], { client: 'computer' });
+
+    for (let turn = 2; turn < 400; turn++) {
+      startTurn(none, turn);
+    }
+
+    expect(events(none, 'barbarians:raiders-at-sea')).to.have.length(0);
+  });
+
+  it('grows the raiders every `raidersEvery` turns, adds `extra`, and takes no more than a Frigate holds', (): void => {
+    expect(
+      [0, 99, 100, 199, 200, 600].map((turn: number) =>
+        raidersAtSeaAt(turn, { ...CLASSIC_ACTIVITY, raidersEvery: 100 })
+      )
+    ).to.eql([1, 1, 2, 2, 3, 3]);
+    expect(
+      [0, 199, 200, 399, 400].map((turn: number) =>
+        raidersAtSeaAt(turn, { ...CLASSIC_ACTIVITY, raidersEvery: 200 })
+      )
+    ).to.eql([1, 1, 2, 2, 3]);
+    expect(
+      [0, 99, 100, 600].map((turn: number) =>
+        raidersAtSeaAt(turn, {
+          ...CLASSIC_ACTIVITY,
+          raidersEvery: 100,
+          extra: 1,
+        })
+      )
+    ).to.eql([2, 2, 3, 3]);
+  });
+
+  it('puts every raider and the leader aboard: a Sail of 2, and a Frigate once there are 3', async (): Promise<void> => {
+    for (const [turn, Ship, cargo] of [
+      [41, Sail, [Swordman, Swordman, Diplomat]],
+      [105, Frigate, [Swordman, Swordman, Swordman, Diplomat]],
+      [601, Frigate, [Swordman, Swordman, Swordman, Diplomat]],
+    ] as [number, typeof Unit, (typeof Unit)[]][]) {
+      const game = await at({ raidersEvery: 100, extra: 1 });
+
+      game.difficulty.set(Emperor);
+      addCivilization(game, [5, 5]);
+
+      game.rolls.push(0, 0.999);
+      startTurn(game, turn);
+
+      const [[, player, ship]] = events(game, 'barbarians:raiders-at-sea') as [
+        string,
+        Player,
+        Unit
+      ][];
+
+      expect(ship, `turn ${turn}`).to.be.instanceOf(Ship);
+      expect(
+        game.units
+          .getByPlayer(player)
+          .filter((unit: Unit) => unit !== ship)
+          .map((unit: Unit) => unit.constructor),
+        `turn ${turn}`
+      ).to.eql(cargo);
+      expect((ship as any).cargo(), `turn ${turn}`).to.have.length(
+        cargo.length
+      );
+    }
+  });
+
+  it('adds `extra` to an uprising, scales its chance, and draws nothing for one at a chance of 0', async (): Promise<void> => {
+    const bigger = await at({ extra: 1 });
+
+    addCivilization(bigger, [5, 5], { size: 4, treasury: 100 });
+    bigger.difficulty.set(Emperor);
+    // As "rise near the human's city": 3 units, and 1 more.
+    bigger.rolls.push(0, 0, 12.5 / 13, 6.5 / 13, 0.9);
+    startTurn(bigger, 34);
+
+    const [[, player]] = events(bigger, 'barbarians:uprising') as [
+      string,
+      Player
+    ][];
+
+    expect(
+      bigger.units.getByPlayer(player).map((unit: Unit) => unit.constructor)
+    ).to.eql([Horseman, Horseman, Horseman, Diplomat]);
+
+    // Gold 80 at half the chance is 40: a roll of 40 fails, where at v474.05's it rises.
+    const half = await at({ uprisingChance: 0.5 });
+
+    addCivilization(half, [5, 5], { size: 4, treasury: 100 });
+    half.difficulty.set(Emperor);
+    half.rolls.push(0, 0.4, 0.999);
+    startTurn(half, 34);
+
+    expect(events(half, 'barbarians:uprising')).to.have.length(0);
+    expect(half.rolls).to.eql([0.999]);
+
+    half.rolls.length = 0;
+    half.rolls.push(0, 0.39, 12.5 / 13, 6.5 / 13, 0.9);
+    startTurn(half, 35);
+
+    expect(events(half, 'barbarians:uprising')).to.have.length(1);
+
+    const none = await at({ uprisingChance: 0 });
+
+    addCivilization(none, [5, 5], { size: 4, treasury: 100 });
+    none.difficulty.set(Emperor);
+    none.rolls.push(0.123);
+    startTurn(none, 34);
+
+    expect(events(none, 'barbarians:uprising')).to.have.length(0);
+    expect(none.rolls).to.eql([0.123]);
+  });
+
+  it('leaves the goody hut horde as it is', async (): Promise<void> => {
+    const game = await at({
+        onset: Infinity,
+        landingEvery: 0,
+        uprisingChance: 0,
+      }),
+      { player } = addCivilization(game, [5, 5]);
+
+    game.rules.process(BarbariansRule, hutAt(game, [10, 5]), {
+      player: () => player,
+    } as any);
+
+    expect(
+      game.units
+        .getByPlayer(barbariansOf(game)!)
+        .map((unit: Unit) => unit.constructor)
+    ).to.eql([Horseman, Horseman, Horseman]);
   });
 });

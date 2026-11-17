@@ -12,6 +12,7 @@ import Industrialization from '@civ-clone/base-science-advance-industrialization
 import Tile from '@civ-clone/core-world/Tile';
 import Unit from '@civ-clone/core-unit/Unit';
 import World from '@civ-clone/core-world/World';
+import activityOf from './activity';
 import anyoneHas from './anyoneHas';
 import cityGold from './cityGold';
 import isBarbarian from '@civ-clone/base-civilization-barbarian/isBarbarian';
@@ -91,6 +92,13 @@ export const landUprising = (
   game: LandUprisingGame,
   rises: (city: City) => boolean
 ): void => {
+  const activity = activityOf(game.rules);
+
+  // A level with no uprisings draws nothing for one.
+  if (activity.uprisingChance <= 0) {
+    return;
+  }
+
   const cities = game.cities
       .entries()
       .filter(
@@ -109,7 +117,10 @@ export const landUprising = (
     return;
   }
 
-  if (Math.floor(game.rng() * 100) >= cityGold(city, game)) {
+  if (
+    Math.floor(game.rng() * 100) >=
+    cityGold(city, game) * activity.uprisingChance
+  ) {
     return;
   }
 
@@ -158,10 +169,9 @@ export const landUprising = (
     return;
   }
 
-  const count = uprisingSize(
-      game.cityGrowth.getByCity(target).size(),
-      game.rng()
-    ),
+  const count =
+      uprisingSize(game.cityGrowth.getByCity(target).size(), game.rng()) +
+      activity.extra,
     industrial = anyoneHas(game.playerResearch, Industrialization),
     player = barbarianPlayer(game, world);
 

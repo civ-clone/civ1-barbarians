@@ -17,6 +17,7 @@
     "ts:compile": "tsc --build tsconfig.json"
   },
   "devDependencies": {
+    "@civ-clone/base-city-yield-gold": "^0.1.1",
     "@civ-clone/base-science-advance-chivalry": "^0.1.0",
     "@civ-clone/civ1-city": "github:civ-clone/civ1-city",
     "@civ-clone/civ1-player": "github:civ-clone/civ1-player",

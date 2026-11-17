@@ -1,6 +1,6 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
-exports.getRules = exports.uprisingUnits = exports.uprisingSize = exports.raidersAtSea = exports.SEA_POLAR_ROWS = void 0;
+exports.getRules = exports.uprisingUnits = exports.uprisingSize = exports.landingDue = exports.raidersAtSeaAt = exports.raidersAtSea = exports.SEA_POLAR_ROWS = void 0;
 const Units_1 = require("@civ-clone/civ1-unit/Units");
 const barbarianPlayer_1 = require("../../lib/barbarianPlayer");
 const spawnUnits_1 = require("../../lib/spawnUnits");
@@ -14,6 +14,7 @@ const RuleIds_1 = require("../../RuleIds");
 const anyoneHas_1 = require("../../lib/anyoneHas");
 const isHuman_1 = require("@civ-clone/civ1-difficulty/isHuman");
 const polar_1 = require("../../lib/polar");
+const activity_1 = require("../../lib/activity");
 const spawning_1 = require("./spawning");
 const spawning_2 = require("../../lib/spawning");
 const waterBody_1 = require("../../lib/waterBody");
@@ -23,6 +24,16 @@ exports.SEA_POLAR_ROWS = 3;
 // The squares a raiding party's ship, and an uprising, are sized by.
 const raidersAtSea = (turnCount) => Math.min(Math.max(Math.floor(turnCount / 150) + 1, 1), 3);
 exports.raidersAtSea = raidersAtSea;
+/**
+ * The raiders at sea at an activity level (`lib/activity`): one more every `raidersEvery` turns, and its `extra`, up to
+ *  the 3 a Frigate holds with their leader. `raidersAtSea` at v474.05's numbers.
+ */
+const raidersAtSeaAt = (turnCount, activity) => Math.min(Math.max(Math.floor(turnCount / activity.raidersEvery) + 1, 1) +
+    activity.extra, 3);
+exports.raidersAtSeaAt = raidersAtSeaAt;
+/** Whether a sea landing is due at an activity level: v474.05's `(turnCount + 1) % 8 === 0` at its 8. */
+const landingDue = (turnCount, activity) => activity.landingEvery > 0 && (turnCount + 1) % activity.landingEvery === 0;
+exports.landingDue = landingDue;
 var landUprising_2 = require("../../lib/landUprising");
 Object.defineProperty(exports, "uprisingSize", { enumerable: true, get: function () { return landUprising_2.uprisingSize; } });
 Object.defineProperty(exports, "uprisingUnits", { enumerable: true, get: function () { return landUprising_2.uprisingUnits; } });
@@ -34,10 +45,12 @@ Object.defineProperty(exports, "uprisingUnits", { enumerable: true, get: functio
 const getRules = (game) => [
     // Every 8th turn, until anyone has Automobile, a Sail (a Frigate from turn 300) appears on an empty square of a sea
     //  of at least 16 squares, clear of the poles, carrying 1 to 3 Swordmen (Knights once anyone has Explosives) and a
-    //  Diplomat. Where it goes is the barbarian client's business.
+    //  Diplomat. Where it goes is the barbarian client's business. The interval and the number of raiders are the
+    //  activity level's (`lib/activity`), v474.05's unless a rule set says otherwise; the ship is a Frigate whenever
+    //  there are 3 raiders, as from turn 300 in v474.05.
     new Start_1.default('civ1-barbarians:turn/start/sea-landing', new Criterion_1.default((turn) => (0, spawning_2.default)(game.rules, turn)), 
-    // v474.05's `(turnCount + 1) % 8 === 0`.
-    new Criterion_1.default((turn) => ((0, spawning_1.turnCount)(turn) + 1) % 8 === 0), new Criterion_1.default(() => !(0, anyoneHas_1.default)(game.playerResearch, Automobile_1.default)), new Effect_1.default((turn) => {
+    // v474.05's `(turnCount + 1) % 8 === 0`, at the activity level's interval.
+    new Criterion_1.default((turn) => (0, exports.landingDue)((0, spawning_1.turnCount)(turn), (0, activity_1.activityOf)(game.rules))), new Criterion_1.default(() => !(0, anyoneHas_1.default)(game.playerResearch, Automobile_1.default)), new Effect_1.default((turn) => {
         const world = (0, worldOf_1.default)(game);
         if (world === null) {
             return;
@@ -60,7 +73,7 @@ const getRules = (game) => [
         if (tile === null) {
             return;
         }
-        const raiders = (0, exports.raidersAtSea)((0, spawning_1.turnCount)(turn)), player = (0, barbarianPlayer_1.default)(game, world), ship = (0, spawnUnits_1.createUnit)((raiders < 3 ? Units_1.Sail : Units_1.Frigate), player, tile, game.rules), Raider = (0, anyoneHas_1.default)(game.playerResearch, Explosives_1.default) ? Units_1.Knight : Units_1.Swordman;
+        const raiders = (0, exports.raidersAtSeaAt)((0, spawning_1.turnCount)(turn), (0, activity_1.activityOf)(game.rules)), player = (0, barbarianPlayer_1.default)(game, world), ship = (0, spawnUnits_1.createUnit)((raiders < 3 ? Units_1.Sail : Units_1.Frigate), player, tile, game.rules), Raider = (0, anyoneHas_1.default)(game.playerResearch, Explosives_1.default) ? Units_1.Knight : Units_1.Swordman;
         (0, spawnUnits_1.default)(player, tile, [...new Array(raiders).fill(Raider), Units_1.Diplomat], game.rules, ship);
         game.engine.emit('barbarians:raiders-at-sea', player, ship, tile);
     })),
