@@ -25,6 +25,7 @@ import Unit from '@civ-clone/core-unit/Unit';
 import anyoneHas from '../../lib/anyoneHas';
 import isHuman from '@civ-clone/civ1-difficulty/isHuman';
 import { polarRows } from '../../lib/polar';
+import { BarbarianActivity, activityOf } from '../../lib/activity';
 import { turnCount } from './spawning';
 import spawning from '../../lib/spawning';
 import waterBodyHasAtLeast from '../../lib/waterBody';
@@ -41,6 +42,27 @@ export const SEA_POLAR_ROWS = 3;
 export const raidersAtSea = (turnCount: number): number =>
   Math.min(Math.max(Math.floor(turnCount / 150) + 1, 1), 3);
 
+/**
+ * The raiders at sea at an activity level (`lib/activity`): one more every `raidersEvery` turns, and its `extra`, up to
+ *  the 3 a Frigate holds with their leader. `raidersAtSea` at v474.05's numbers.
+ */
+export const raidersAtSeaAt = (
+  turnCount: number,
+  activity: BarbarianActivity
+): number =>
+  Math.min(
+    Math.max(Math.floor(turnCount / activity.raidersEvery) + 1, 1) +
+      activity.extra,
+    3
+  );
+
+/** Whether a sea landing is due at an activity level: v474.05's `(turnCount + 1) % 8 === 0` at its 8. */
+export const landingDue = (
+  turnCount: number,
+  activity: BarbarianActivity
+): boolean =>
+  activity.landingEvery > 0 && (turnCount + 1) % activity.landingEvery === 0;
+
 export { uprisingSize, uprisingUnits } from '../../lib/landUprising';
 
 /**
@@ -51,12 +73,16 @@ export { uprisingSize, uprisingUnits } from '../../lib/landUprising';
 export const getRules = (game: BarbariansGame): Start[] => [
   // Every 8th turn, until anyone has Automobile, a Sail (a Frigate from turn 300) appears on an empty square of a sea
   //  of at least 16 squares, clear of the poles, carrying 1 to 3 Swordmen (Knights once anyone has Explosives) and a
-  //  Diplomat. Where it goes is the barbarian client's business.
+  //  Diplomat. Where it goes is the barbarian client's business. The interval and the number of raiders are the
+  //  activity level's (`lib/activity`), v474.05's unless a rule set says otherwise; the ship is a Frigate whenever
+  //  there are 3 raiders, as from turn 300 in v474.05.
   new Start(
     'civ1-barbarians:turn/start/sea-landing',
     new Criterion((turn: Turn): boolean => spawning(game.rules, turn)),
-    // v474.05's `(turnCount + 1) % 8 === 0`.
-    new Criterion((turn: Turn): boolean => (turnCount(turn) + 1) % 8 === 0),
+    // v474.05's `(turnCount + 1) % 8 === 0`, at the activity level's interval.
+    new Criterion((turn: Turn): boolean =>
+      landingDue(turnCount(turn), activityOf(game.rules))
+    ),
     new Criterion((): boolean => !anyoneHas(game.playerResearch, Automobile)),
     new Effect((turn: Turn): void => {
       const world = worldOf(game);
@@ -95,7 +121,7 @@ export const getRules = (game: BarbariansGame): Start[] => [
         return;
       }
 
-      const raiders = raidersAtSea(turnCount(turn)),
+      const raiders = raidersAtSeaAt(turnCount(turn), activityOf(game.rules)),
         player = barbarianPlayer(game, world),
         ship = createUnit(
           (raiders < 3 ? Sail : Frigate) as unknown as typeof Unit,
