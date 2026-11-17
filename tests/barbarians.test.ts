@@ -98,7 +98,9 @@ type TestGame = BarbariansGame & {
   spawnedEvents: unknown[][];
 };
 
-const createGame = async (): Promise<TestGame> => {
+const createGame = async (
+  topologyId: 'square' | 'hex-odd-r' | 'staggered-iso' = 'square'
+): Promise<TestGame> => {
   const rules = new RuleRegistry(),
     landMasses = new LandMassRegistry(),
     width = 30,
@@ -111,7 +113,7 @@ const createGame = async (): Promise<TestGame> => {
           new ((Math.floor(i / width) < 15
             ? Grassland
             : Ocean) as unknown as new () => Terrain)(),
-        {},
+        { topologyId },
         rules,
         terrainRegistryInstance
       ),
@@ -556,6 +558,42 @@ describe('land uprisings', (): void => {
       game.units.getByPlayer(player).map((unit: Unit) => unit.constructor)
     ).to.eql([Musketman, Musketman, Diplomat]);
   });
+
+  // civ-clone/web-renderer#980: a storage-coordinate box isn't a radius off the square grid.
+  for (const topologyId of ['hex-odd-r', 'staggered-iso'] as const) {
+    it(`on the ${topologyId} grid, rise on a square the grid puts within 6, drawn with one roll`, async (): Promise<void> => {
+      const game = await createGame(topologyId),
+        { city } = addCivilization(game, [5, 6], { size: 4, treasury: 100 }),
+        topology = game.world.topology(),
+        area = topology.area(5, 6, 6),
+        // The first square of the area that will do: land, at least 6 from the city.
+        index = area.findIndex(
+          ([x, y]: [number, number]): boolean =>
+            game.world.get(x, y).isLand() &&
+            game.world.get(x, y).distanceFrom(city!.tile()) >= 6
+        );
+
+      expect(topology.id()).to.equal(topologyId);
+      expect(index).not.to.equal(-1);
+
+      game.difficulty.set(Emperor);
+      // Slot 0, a chance roll of 0, one roll for the square, and a group roll of 0.9.
+      game.rolls.push(0, 0, (index + 0.5) / area.length, 0.9);
+      startTurn(game, 34);
+
+      const [[, , target, tile]] = events(game, 'barbarians:uprising') as [
+        string,
+        Player,
+        City,
+        Tile
+      ][];
+
+      expect(target).to.equal(city);
+      expect([tile.x(), tile.y()]).to.eql(area[index]);
+      expect(topology.steps(tile.x(), tile.y(), 5, 6)).to.be.at.most(6);
+      expect(game.rolls).to.eql([]);
+    });
+  }
 });
 
 describe('the barbarian player', (): void => {

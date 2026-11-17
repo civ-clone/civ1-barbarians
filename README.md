@@ -3,9 +3,16 @@
 Civilization I's barbarians (civ-clone/web-renderer#169): raiding parties that land from the sea and uprisings that
 break out in empty land near cities, from v474.05 (`GameEngine.cs` `F0_1238_0980_GenerateBarbarianUprising`).
 
-The barbarian player is `base-civilization-barbarian`'s `Barbarian`, made by the first spawn through `civ1-player`'s
-`addPlayer` (`lib/barbarianPlayer`). Its government is Anarchy for good, it has no advances and it is never offered
-research. The host answers `player:spawned` with a client for it, as `simple-ai-client`'s `BarbarianClient` is.
+The mechanism is `base-barbarians`' (the `Spawning` gate, the barbarian player, spawning a group, ransom, a city's
+gold): this package keeps v474.05's numbers, units, terrain and polar rows, and its rule ids, and builds its rules on
+those helpers. The old paths (`Rules/Spawning`, `lib/spawning`, `lib/spawnUnits`, `lib/cityGold`, `lib/anyoneHas`,
+`lib/waterBody`, `lib/worldOf`) re-export them, so a rule registered from either path is the same kind of rule.
+
+The barbarian player is `base-civilization-barbarian`'s `Barbarian`, made by the first spawn through base-barbarians'
+`barbarianPlayer` (`lib/barbarianPlayer`), with `civ1-science`'s starting advances held off. Its government is Anarchy
+for good, it has no advances and it is never offered research. The host answers `player:spawned` with a client for
+it, as `simple-ai-client`'s `BarbarianClient` is. That client falls back to v474.05's leader (the Diplomat) and polar
+exit (2 of 50 rows), so this package registers no `LeadsGroup` or `LeavesMap` rule.
 
 ## Rules
 
@@ -24,6 +31,9 @@ research. The host answers `player:spawned` with a client for it, as `simple-ai-
   Industrialization), the last a Diplomat. Emits `barbarians:uprising` (player, city, tile, guerrilla).
   `lib/landUprising` raises it, and `civ1-enhanced` lets any civilization's city rise, superseding this rule while its
   set is on (civ-clone/web-renderer#954).
+- `civ1-barbarians:goody-hut/barbarians/horde`: a goody hut's horde (civ-clone/web-renderer#172): round the hut's
+  neighbours from the north, clockwise, stepping by clamp(4 − the player's cities, 1, 4), a Horseman on each free
+  land square that isn't a city, or a Swordman on Mountains.
 - `civ1-barbarians:city/build/raiders-only`: as v474.05, a barbarian city builds a Warrior while the barbarians have
   no unit, then Swordmen, and Knights once anyone has Explosives; nothing else. `civ1-unit`'s advance rules leave
   barbarian cities to this one. `civ1-enhanced` lets them build any attacking land unit two civilizations can build,
@@ -32,6 +42,11 @@ research. The host answers `player:spawned` with a client for it, as `simple-ai-
   civilization that beat him 100 gold (`lib/ransom`), and emits `barbarians:ransom` (player, leader, gold). As
   v474.05, only the defender counts: a leader killed in a stack another unit defended pays nothing.
   `civ1-enhanced` pays for those too, superseding this rule while its set is on (civ-clone/web-renderer#954).
+- `civ1-barbarians:city/captured/burn`: barbarians whose strongest unit in a city they take attacks at 2 or less (a
+  Horseman or a Musketman) burn it rather than hold it (civ-clone/web-renderer#171). Low priority, after the capture.
+- `civ1-barbarians:unit/moved/pillage`: a barbarian Horseman, Chariot, Musketman or Cannon leaving a square outside a
+  city that has irrigation or a mine, whose nearest city is a civilization's, destroys both through the `Pillaged`
+  rules, and stops (civ-clone/web-renderer#171).
 
 The human: v474.05's one human is, here, every player whose seat is not played by the computer (`civ1-difficulty`'s
 `isHuman`: a player with a client, none of them an `AIClient`). In a game with no such seat (all computer players, or a

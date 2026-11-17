@@ -1,7 +1,3 @@
-import { RuleRegistry } from '@civ-clone/core-rule/RuleRegistry';
-import Turn from '@civ-clone/core-turn-based-game/Turn';
-export declare const spawning: (
-  ruleRegistry: RuleRegistry,
-  turn: Turn
-) => boolean;
+import spawning from '@civ-clone/base-barbarians/lib/spawning';
+export { spawning };
 export default spawning;
