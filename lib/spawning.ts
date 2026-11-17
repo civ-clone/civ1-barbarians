@@ -1,9 +1,6 @@
-import { RuleRegistry } from '@civ-clone/core-rule/RuleRegistry';
-import Spawning from '../Rules/Spawning';
-import Turn from '@civ-clone/core-turn-based-game/Turn';
+// Moved to base-barbarians; kept here for importers (civ1-enhanced).
+import spawning from '@civ-clone/base-barbarians/lib/spawning';
 
-// Whether every `Spawning` rule allows barbarians this turn. With none registered there is no gate.
-export const spawning = (ruleRegistry: RuleRegistry, turn: Turn): boolean =>
-  ruleRegistry.process(Spawning, turn).every(Boolean);
+export { spawning };
 
 export default spawning;

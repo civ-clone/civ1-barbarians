@@ -1,13 +1,9 @@
 "use strict";
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.Spawning = void 0;
-const Rule_1 = require("@civ-clone/core-rule/Rule");
-/**
- * Whether barbarians may appear this turn. Every `Spawning` rule has to pass before a landing or an uprising is tried,
- * so a variant can change the gate (`Rules/Turn/spawning`) or add one of its own.
- */
-class Spawning extends Rule_1.default {
-}
-exports.Spawning = Spawning;
-exports.default = Spawning;
+// Moved to base-barbarians, which every rule set's barbarians share; kept here for importers. One class, so a rule
+//  registered from either path is the same kind of rule.
+const Spawning_1 = require("@civ-clone/base-barbarians/Rules/Spawning");
+Object.defineProperty(exports, "Spawning", { enumerable: true, get: function () { return Spawning_1.Spawning; } });
+exports.default = Spawning_1.Spawning;
 //# sourceMappingURL=Spawning.js.map

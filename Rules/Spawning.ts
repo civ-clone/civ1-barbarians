@@ -1,10 +1,7 @@
-import Rule from '@civ-clone/core-rule/Rule';
-import Turn from '@civ-clone/core-turn-based-game/Turn';
+// Moved to base-barbarians, which every rule set's barbarians share; kept here for importers. One class, so a rule
+//  registered from either path is the same kind of rule.
+import { Spawning } from '@civ-clone/base-barbarians/Rules/Spawning';
 
-/**
- * Whether barbarians may appear this turn. Every `Spawning` rule has to pass before a landing or an uprising is tried,
- * so a variant can change the gate (`Rules/Turn/spawning`) or add one of its own.
- */
-export class Spawning extends Rule<[Turn], boolean> {}
+export { Spawning };
 
 export default Spawning;

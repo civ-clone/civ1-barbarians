@@ -1,3 +1,3 @@
-import Tile from '@civ-clone/core-world/Tile';
-export declare const waterBodyHasAtLeast: (tile: Tile, size: number) => boolean;
+import waterBodyHasAtLeast from '@civ-clone/base-barbarians/lib/waterBody';
+export { waterBodyHasAtLeast };
 export default waterBodyHasAtLeast;
