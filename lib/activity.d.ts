@@ -2,7 +2,8 @@ import { RuleRegistry } from '@civ-clone/core-rule/RuleRegistry';
 /**
  * The numbers the barbarians are played by (civ-clone/web-renderer#1008). This package reads them and owns only
  *  v474.05's (`CLASSIC_ACTIVITY`); another package that offers other levels gives their numbers through `Activity`
- *  rules.
+ *  rules. Each is a whole number of 0 or more (`onset`, `landingEvery` and `raidersEvery` above 0 where they are
+ *  used), and `uprisingChance` from 0 to 1: nothing checks them.
  */
 export type BarbarianActivity = {
   /**
@@ -26,7 +27,8 @@ export type BarbarianActivity = {
 export declare const CLASSIC_ACTIVITY: Readonly<BarbarianActivity>;
 /**
  * The numbers the barbarians play by in a game: the first `Activity` rule's answer, or v474.05's when none answers (no
- *  rule registered, or none switched on).
+ *  rule registered, or none switched on). An answering rule may draw from the game's random numbers the first time it
+ *  is asked (`civ1-enhanced`'s random level does, from the first turn's gate), so ask only where play does.
  */
 export declare const activityOf: (rules: RuleRegistry) => BarbarianActivity;
 export default activityOf;
